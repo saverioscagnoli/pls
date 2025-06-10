@@ -1,59 +1,45 @@
-use jwalk::{DirEntry, WalkDirGeneric};
-use std::{
-    path::{Path, PathBuf},
-    time::Instant,
-};
+use clap::Parser;
+use std::{path::PathBuf, time::Instant};
 
-use crate::tree::SyncWalk;
-use clap::{Parser, Subcommand};
+use crate::{dir::DetailedEntry, table::Table, walk::Walk};
 
-mod tree;
+mod dir;
+mod table;
+mod walk;
 
-#[derive(Debug, Subcommand)]
-enum Command {
-    /// List directory contents (default)
-    List {
-        #[arg(default_value = ".")]
-        path: PathBuf,
-        #[arg(short, long, default_value_t = false)]
-        all: bool,
-    },
-    /// Show directory size
-    Size {
-        #[arg(default_value = ".")]
-        path: PathBuf,
-        #[arg(short, long, default_value_t = false)]
-        all: bool,
-    },
-}
-
-impl Default for Command {
-    fn default() -> Self {
-        Command::List {
-            path: PathBuf::from("."),
-            all: false,
-        }
-    }
-}
-
-#[derive(Parser, Debug)]
-#[command(arg_required_else_help = false)]
+#[derive(Debug, Parser)]
 struct Args {
-    #[command(subcommand)]
-    command: Option<Command>,
+    /// Path to walk
+    #[clap(short, long, default_value = ".")]
+    path: PathBuf,
 }
 
 fn main() {
     let args = Args::parse();
 
-    match args.command.unwrap_or_default() {
-        Command::List { path, all } => {
-            println!("Listing contents of: {:?}", path);
-            for entry in SyncWalk::new(&path).skip_hidden(!all).max_depth(2) {
-                println!("{:?}", entry.path);
-            }
-        }
+    let mut table = Table::new().padding(2);
 
-        Command::Size { path, all } => {}
+    for (entry, _) in Walk::new(&args.path)
+        .with_max_depth(1)
+        .map(|(e, d)| (DetailedEntry::from(e), d))
+    {
+        let name = entry
+            .path()
+            .file_name()
+            .unwrap_or(entry.path().as_os_str())
+            .to_string_lossy()
+            .to_string();
+
+        let namepad = match name.starts_with('.') {
+            true => "",
+            false => " ",
+        };
+
+        let name = format!("{namepad}{name}");
+        let kind = entry.kind().to_string();
+
+        table.add_row(vec![name, kind]);
     }
+
+    println!("{}", table);
 }
