@@ -31,6 +31,10 @@ impl<T: Display> Table<T> {
         self.padding = padding;
         self
     }
+
+    pub fn rows(&self) -> &Vec<Vec<T>> {
+        &self.rows
+    }
 }
 
 impl<T: Display> Display for Table<T> {
@@ -57,8 +61,8 @@ impl<T: Display> Display for Table<T> {
             }
         }
 
-        for row in self.rows.iter() {
-            for (i, cell) in row.iter().enumerate() {
+        for (i, row) in self.rows.iter().enumerate() {
+            for (j, cell) in row.iter().enumerate() {
                 let cell = cell.to_string();
 
                 write!(
@@ -66,12 +70,15 @@ impl<T: Display> Display for Table<T> {
                     "{:<width$}{:<padding$}",
                     cell,
                     "",
-                    width = widths[i],
+                    width = widths[j],
                     padding = self.padding
                 )?;
             }
 
-            writeln!(f)?;
+            // Dont write a newline after the last row
+            if i < self.rows.len() - 1 {
+                writeln!(f)?;
+            }
         }
 
         Ok(())

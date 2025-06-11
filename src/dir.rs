@@ -1,9 +1,4 @@
-use std::{
-    fs::{DirEntry, FileType},
-    path::PathBuf,
-};
-
-use getset::{CopyGetters, Getters};
+use std::fs::{DirEntry, FileType};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FileKind {
@@ -38,23 +33,37 @@ impl ToString for FileKind {
     }
 }
 
-#[derive(Debug, Clone, Getters, CopyGetters)]
+#[derive(Debug, Clone)]
 pub struct DetailedEntry {
-    #[getset(get = "pub")]
-    path: PathBuf,
-
-    #[getset(get_copy = "pub")]
+    name: String,
     kind: FileKind,
+}
+
+impl DetailedEntry {
+    pub fn name(&self) -> &str {
+        self.name.as_str()
+    }
+
+    pub fn kind(&self) -> FileKind {
+        self.kind
+    }
 }
 
 impl From<DirEntry> for DetailedEntry {
     fn from(entry: DirEntry) -> Self {
         let path = entry.path();
 
+        // Get the file name if it exists, otherwise use the full path.
+        // (Likely that its a root directory or similar, so something very short)
+        let name = path.file_name().map_or_else(
+            || path.as_os_str().to_string_lossy().to_string(),
+            |name| name.to_string_lossy().to_string(),
+        );
+
         // Note: this cant fail because in the Walk iterator only entries
         // with valid file types are returned.
         let kind = entry.file_type().map_or(FileKind::Other, FileKind::from);
 
-        Self { path, kind }
+        Self { name, kind }
     }
 }

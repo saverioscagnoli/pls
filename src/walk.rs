@@ -1,32 +1,55 @@
-use getset::{Setters, WithSetters};
 use std::{
     fs::{DirEntry, ReadDir},
-    path::{Path, PathBuf},
+    path::Path,
 };
 
-#[derive(Debug, Setters, WithSetters)]
-pub struct Walk {
-    stack: Vec<(ReadDir, usize)>, // store (ReadDir, depth)
-    #[getset(set_with = "pub")]
+#[derive(Debug, Clone)]
+pub struct WalkOptions {
     max_depth: usize,
+    skip_hidden: bool,
 }
 
-impl Walk {
-    pub fn new<P: AsRef<Path>>(path: P) -> Self {
-        let rd = std::fs::read_dir(&path).expect("Root directory should be valid");
+impl Default for WalkOptions {
+    fn default() -> Self {
         Self {
-            stack: vec![(rd, 1)],
             max_depth: usize::MAX,
+            skip_hidden: true,
         }
     }
 }
 
-impl Iterator for Walk {
+#[derive(Debug)]
+pub struct SyncWalk {
+    stack: Vec<(ReadDir, usize)>, // store (ReadDir, depth)
+    options: WalkOptions,
+}
+
+impl SyncWalk {
+    pub fn new<P: AsRef<Path>>(path: P) -> Self {
+        let rd = std::fs::read_dir(&path).expect("Root directory should be valid");
+        Self {
+            stack: vec![(rd, 1)],
+            options: WalkOptions::default(),
+        }
+    }
+
+    pub fn max_depth(mut self, depth: usize) -> Self {
+        self.options.max_depth = depth;
+        self
+    }
+
+    pub fn skip_hidden(mut self, skip: bool) -> Self {
+        self.options.skip_hidden = skip;
+        self
+    }
+}
+
+impl Iterator for SyncWalk {
     type Item = (DirEntry, usize);
 
     fn next(&mut self) -> Option<Self::Item> {
         while let Some((rd, depth)) = self.stack.last_mut() {
-            let current_depth = *depth; // Capture the current depth
+            let depth = *depth;
 
             let Some(rd) = rd.next() else {
                 self.stack.pop();
@@ -45,15 +68,20 @@ impl Iterator for Walk {
                 continue;
             }
 
-            // If it's a directory and we haven't exceeded max depth, add it to stack
-            if ft.is_dir() && current_depth + 1 <= self.max_depth {
+            if let Some(name) = e.file_name().to_str() {
+                if self.options.skip_hidden && name.starts_with('.') {
+                    continue;
+                }
+            }
+
+            if ft.is_dir() && depth + 1 <= self.options.max_depth {
                 if let Ok(subrd) = std::fs::read_dir(&e.path()) {
-                    self.stack.push((subrd, current_depth + 1));
+                    self.stack.push((subrd, depth + 1));
                 }
             }
 
             // Return the current entry with its correct depth
-            return Some((e, current_depth));
+            return Some((e, depth));
         }
         None
     }
