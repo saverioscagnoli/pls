@@ -1,5 +1,7 @@
 use std::fmt::Display;
 
+use unicode_width::UnicodeWidthStr;
+
 pub struct Table<T: Display> {
     // Matrix of rows, made of vectors of type T
     // T must be printable (Display trait)
@@ -53,8 +55,7 @@ impl<T: Display> Display for Table<T> {
 
         for row in self.rows.iter() {
             for (i, cell) in row.iter().enumerate() {
-                let len = cell.to_string().len();
-
+                let len = cell.to_string().width();
                 if len > widths[i] {
                     widths[i] = len;
                 }
@@ -65,17 +66,22 @@ impl<T: Display> Display for Table<T> {
             for (j, cell) in row.iter().enumerate() {
                 let cell = cell.to_string();
 
-                write!(
-                    f,
-                    "{:<width$}{:<padding$}",
-                    cell,
-                    "",
-                    width = widths[j],
-                    padding = self.padding
-                )?;
+                // For the last column, don't add padding
+                if j == row.len() - 1 {
+                    write!(f, "{}", cell)?;
+                } else {
+                    write!(
+                        f,
+                        "{:<width$}{:<padding$}",
+                        cell,
+                        "",
+                        width = widths[j],
+                        padding = self.padding
+                    )?;
+                }
             }
 
-            // Dont write a newline after the last row
+            // Don't write a newline after the last row
             if i < self.rows.len() - 1 {
                 writeln!(f)?;
             }

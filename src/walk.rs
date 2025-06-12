@@ -27,6 +27,7 @@ pub struct SyncWalk {
 impl SyncWalk {
     pub fn new<P: AsRef<Path>>(path: P) -> Self {
         let rd = std::fs::read_dir(&path).expect("Root directory should be valid");
+
         Self {
             stack: vec![(rd, 1)],
             options: WalkOptions::default(),

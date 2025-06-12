@@ -1,4 +1,9 @@
-use std::fs::{DirEntry, FileType};
+use crate::utils::get_permissions;
+use chrono::{DateTime, Local};
+use std::{
+    fs::{DirEntry, FileType},
+    path::PathBuf,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FileKind {
@@ -25,33 +30,28 @@ impl From<FileType> for FileKind {
 impl ToString for FileKind {
     fn to_string(&self) -> String {
         match self {
-            FileKind::File => "file".to_string(),
-            FileKind::Directory => "dir".to_string(),
-            FileKind::Symlink => "symlink".to_string(),
-            FileKind::Other => "unknown".to_string(),
+            FileKind::File => "f".to_string(),
+            FileKind::Directory => "d".to_string(),
+            FileKind::Symlink => "l".to_string(),
+            FileKind::Other => "?".to_string(),
         }
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct DetailedEntry {
+    path: PathBuf,
     name: String,
     kind: FileKind,
-}
-
-impl DetailedEntry {
-    pub fn name(&self) -> &str {
-        self.name.as_str()
-    }
-
-    pub fn kind(&self) -> FileKind {
-        self.kind
-    }
+    size: u64,
+    permissions: String,
+    timestamp: Option<DateTime<Local>>,
 }
 
 impl From<DirEntry> for DetailedEntry {
     fn from(entry: DirEntry) -> Self {
         let path = entry.path();
+        let meta = path.metadata().ok();
 
         // Get the file name if it exists, otherwise use the full path.
         // (Likely that its a root directory or similar, so something very short)
@@ -64,6 +64,50 @@ impl From<DirEntry> for DetailedEntry {
         // with valid file types are returned.
         let kind = entry.file_type().map_or(FileKind::Other, FileKind::from);
 
-        Self { name, kind }
+        let size = meta.as_ref().map_or(0, |m| m.len());
+
+        let permissions = meta
+            .as_ref()
+            .map(|m| get_permissions(m))
+            .unwrap_or_else(|| "unknown".to_string());
+
+        let timestamp = meta
+            .and_then(|m| m.modified().ok())
+            .and_then(|t| Some(DateTime::from(t)));
+
+        Self {
+            path: path.strip_prefix("./").unwrap_or(&path).to_path_buf(),
+            name,
+            kind,
+            size,
+            permissions,
+            timestamp,
+        }
+    }
+}
+
+impl DetailedEntry {
+    pub fn path(&self) -> &PathBuf {
+        &self.path
+    }
+
+    pub fn name(&self) -> &str {
+        self.name.as_str()
+    }
+
+    pub fn kind(&self) -> FileKind {
+        self.kind
+    }
+
+    pub fn size(&self) -> u64 {
+        self.size
+    }
+
+    pub fn permissions(&self) -> &str {
+        self.permissions.as_str()
+    }
+
+    pub fn timestamp(&self) -> Option<DateTime<Local>> {
+        self.timestamp
     }
 }
