@@ -87,16 +87,17 @@ fn main() {
             .custom_color((128, 128, 128));
 
         // Convert absolute path to relative path from git workdir
-        let git_status = match git_cache.get_status(&entry.path()) {
-            Some(GitStatus::Untracked) => "U".green(),
-            Some(GitStatus::Modified) => "M".yellow(),
-            Some(GitStatus::Deleted) => "D".red(),
-            Some(GitStatus::Renamed) => "R".yellow(),
-            Some(GitStatus::Ignored) => "I".custom_color((128, 128, 128)),
-            Some(GitStatus::Conflict) => "C".bright_yellow(),
-            Some(GitStatus::Clean) => "-".custom_color((128, 128, 128)),
-            None => " ".white(),
-        };
+        let git_status = git_cache.as_ref().map_or(None, |c| {
+            match c.get_status(&entry.path()).unwrap_or(&GitStatus::Clean) {
+                GitStatus::Untracked => Some("U".green().bold()),
+                GitStatus::Modified => Some("M".yellow()),
+                GitStatus::Deleted => Some("D".red().bold()),
+                GitStatus::Renamed => Some("R".blue()),
+                GitStatus::Ignored => Some("I".custom_color((128, 128, 128))),
+                GitStatus::Conflict => Some("C".magenta().bold()),
+                GitStatus::Clean => Some(" ".to_string().white()),
+            }
+        });
 
         let mut rows = Vec::new();
 
@@ -109,7 +110,14 @@ fn main() {
         );
         rows.push(Size(entry.size()).to_string());
         rows.push(timestamp.to_string());
-        rows.push(git_status.to_string());
+
+        // Dont care about the aligment here,
+        // since if the status, is None, it will be for all files.
+        // while if it is Some, it will be for all files that are tracked by git.
+        if let Some(status) = git_status {
+            rows.push(status.to_string());
+        }
+
         rows.push(format!("󱞫 {}", entry.nlink()));
 
         if let Some(target) = entry.link_target() {

@@ -81,13 +81,8 @@ pub struct GitCache {
 }
 
 impl GitCache {
-    pub fn new<P: AsRef<Path>>(root: P) -> Self {
-        let repo = Repository::open(".").unwrap_or_else(|_| {
-            panic!(
-                "Could not find a git repository at {}",
-                root.as_ref().display()
-            )
-        });
+    pub fn new<P: AsRef<Path>>(root: P) -> Option<Self> {
+        let repo = Repository::open(root).ok()?;
 
         let mut status_opts = StatusOptions::new();
 
@@ -99,9 +94,7 @@ impl GitCache {
             .include_ignored(true)
             .show(git2::StatusShow::IndexAndWorkdir);
 
-        let statuses = repo
-            .statuses(Some(&mut status_opts))
-            .expect("Failed to get git statuses");
+        let statuses = repo.statuses(Some(&mut status_opts)).ok()?;
 
         let mut status_map = HashMap::new();
         let mut directories: HashMap<PathBuf, Vec<GitStatus>> = HashMap::new();
@@ -132,7 +125,7 @@ impl GitCache {
             status_map.insert(dir.to_path_buf(), highest_status);
         }
 
-        Self { status: status_map }
+        Some(Self { status: status_map })
     }
 
     pub fn get_status(&self, path: &Path) -> Option<&GitStatus> {
