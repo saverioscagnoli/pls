@@ -2,7 +2,8 @@ use crate::utils::get_permissions;
 use chrono::{DateTime, Local};
 use std::{
     fs::{DirEntry, FileType},
-    path::PathBuf,
+    os::unix::fs::MetadataExt,
+    path::{Path, PathBuf},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -46,6 +47,9 @@ pub struct DetailedEntry {
     size: u64,
     permissions: String,
     timestamp: Option<DateTime<Local>>,
+    nlink: u64,
+    link_target: Option<PathBuf>,
+    executable: bool,
 }
 
 impl From<DirEntry> for DetailedEntry {
@@ -72,8 +76,17 @@ impl From<DirEntry> for DetailedEntry {
             .unwrap_or_else(|| "unknown".to_string());
 
         let timestamp = meta
+            .as_ref()
             .and_then(|m| m.modified().ok())
             .and_then(|t| Some(DateTime::from(t)));
+
+        let nlink = meta.as_ref().map_or(1, |m| m.nlink());
+        let link_target = match kind {
+            FileKind::Symlink => std::fs::read_link(&path).ok(),
+            _ => None,
+        };
+
+        let executable = meta.as_ref().map_or(false, |m| m.mode() & 0o11 != 0);
 
         Self {
             path: path.strip_prefix("./").unwrap_or(&path).to_path_buf(),
@@ -82,6 +95,9 @@ impl From<DirEntry> for DetailedEntry {
             size,
             permissions,
             timestamp,
+            nlink,
+            executable,
+            link_target,
         }
     }
 }
@@ -109,5 +125,17 @@ impl DetailedEntry {
 
     pub fn timestamp(&self) -> Option<DateTime<Local>> {
         self.timestamp
+    }
+
+    pub fn nlink(&self) -> u64 {
+        self.nlink
+    }
+
+    pub fn executable(&self) -> bool {
+        self.executable
+    }
+
+    pub fn link_target(&self) -> Option<&Path> {
+        self.link_target.as_deref()
     }
 }

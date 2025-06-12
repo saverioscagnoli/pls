@@ -1,5 +1,5 @@
 use std::fmt::Display;
-
+use strip_ansi_escapes::strip_str;
 use unicode_width::UnicodeWidthStr;
 
 pub struct Table<T: Display> {
@@ -55,7 +55,8 @@ impl<T: Display> Display for Table<T> {
 
         for row in self.rows.iter() {
             for (i, cell) in row.iter().enumerate() {
-                let len = cell.to_string().width();
+                let len = strip_str(&cell.to_string()).width();
+
                 if len > widths[i] {
                     widths[i] = len;
                 }
@@ -64,20 +65,17 @@ impl<T: Display> Display for Table<T> {
 
         for (i, row) in self.rows.iter().enumerate() {
             for (j, cell) in row.iter().enumerate() {
-                let cell = cell.to_string();
+                let cell_str = cell.to_string();
 
                 // For the last column, don't add padding
                 if j == row.len() - 1 {
-                    write!(f, "{}", cell)?;
+                    write!(f, "{}", cell_str)?;
                 } else {
-                    write!(
-                        f,
-                        "{:<width$}{:<padding$}",
-                        cell,
-                        "",
-                        width = widths[j],
-                        padding = self.padding
-                    )?;
+                    // Calculate visual width and required padding
+                    let visual_width = strip_str(&cell_str).width();
+                    let total_padding = (widths[j] - visual_width) + self.padding;
+
+                    write!(f, "{}{:<padding$}", cell_str, "", padding = total_padding)?;
                 }
             }
 
