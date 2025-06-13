@@ -43,6 +43,7 @@ impl ToString for FileKind {
 pub struct DetailedEntry {
     path: PathBuf,
     name: String,
+    ext: Option<String>,
     kind: FileKind,
     size: u64,
     permissions: String,
@@ -63,6 +64,10 @@ impl From<DirEntry> for DetailedEntry {
             || path.as_os_str().to_string_lossy().to_string(),
             |name| name.to_string_lossy().to_string(),
         );
+
+        let ext = path
+            .extension()
+            .and_then(|ext| Some(ext.to_string_lossy().to_string()));
 
         // Note: this cant fail because in the Walk iterator only entries
         // with valid file types are returned.
@@ -91,6 +96,7 @@ impl From<DirEntry> for DetailedEntry {
         Self {
             path: path.strip_prefix("./").unwrap_or(&path).to_path_buf(),
             name,
+            ext,
             kind,
             size,
             permissions,
@@ -109,6 +115,10 @@ impl DetailedEntry {
 
     pub fn name(&self) -> &str {
         self.name.as_str()
+    }
+
+    pub fn extension(&self) -> Option<&str> {
+        self.ext.as_deref()
     }
 
     pub fn kind(&self) -> FileKind {

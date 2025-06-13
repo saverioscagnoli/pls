@@ -111,9 +111,9 @@ impl IndicatorsConfig {
     /// Retrieves the icon for a file based on its name
     /// and returns it as a `String`.
     /// It will use the default icon if the name is not found in the files map.
-    pub fn file<T: AsRef<str>>(&self, name: T) -> String {
+    pub fn file<T: AsRef<str>>(&self, ext: T) -> String {
         self.files
-            .get(name.as_ref())
+            .get(ext.as_ref())
             .unwrap_or(&self.default_file_indicator)
             .to_string()
     }

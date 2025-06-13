@@ -98,7 +98,7 @@ fn ls(args: &Args, conf: &Config) {
         let name = entry.name();
 
         let icon = match entry.kind() {
-            FileKind::File => conf.indicators.file(name),
+            FileKind::File => conf.indicators.file(&entry.extension().unwrap_or(name)),
             FileKind::Directory => conf.indicators.dir(&name),
             _ => conf.indicators.unknown(),
         };
