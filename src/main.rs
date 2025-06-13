@@ -3,12 +3,12 @@ use crate::{
     config::Config,
     dir::{DetailedEntry, FileKind},
     git::{GitCache, GitStatus},
-    table::Table,
+    table::{Alignment, Table},
     walk::SyncWalk,
 };
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use colored::Colorize;
-use std::path::PathBuf;
+use std::{cmp::Ordering, path::PathBuf};
 
 mod bytes;
 mod config;
@@ -18,113 +18,167 @@ mod table;
 mod utils;
 mod walk;
 
+#[derive(Debug, Subcommand)]
+pub enum Command {
+    /// This is the default command, it will trigger if no subcommand is provided.
+    /// Its args are defined in `Args`.
+    List,
+
+    /// Finds a file or directory by name.
+    Find {
+        /// The name of the file or directory to search for.
+        #[clap(index = 1)]
+        name: String,
+
+        /// The root path to start the search from.
+        /// Defaults to the current directory.
+        #[clap(default_value = ".", index = 2)]
+        path: PathBuf,
+    },
+}
+
 #[derive(Debug, Parser)]
 struct Args {
     /// Path to walk
     #[clap(default_value = ".", index = 1)]
     path: PathBuf,
+
     // The maximum depth to walk
     #[clap(short, long, default_value = "1")]
     depth: usize,
+
     /// Show all files, including hidden ones
     #[clap(short, long, default_value = "false")]
     all: bool,
+
+    /// The command to run
+    /// If not provided, the default command is `List`.
+    #[clap(subcommand)]
+    command: Option<Command>,
 }
 
 fn main() {
     let args = Args::parse();
     let config = Config::parse();
-    let mut table = Table::new().padding(2);
 
+    match args.command {
+        Some(Command::Find { name, path }) => {}
+        _ => ls(&args, &config),
+    }
+}
+
+fn ls(args: &Args, conf: &Config) {
+    let mut table = Table::new().padding(conf.ls.padding);
     let git_cache = GitCache::new(&args.path);
 
     for (entry, depth) in SyncWalk::new(&args.path)
         .sort_by(|a, b| {
-            // Directories first
-            let a_is_dir = a.file_type().map(|ft| ft.is_dir()).unwrap_or(false);
-            let b_is_dir = b.file_type().map(|ft| ft.is_dir()).unwrap_or(false);
+            let is_dir_a = a.file_type().map_or(false, |t| t.is_dir());
+            let is_dir_b = b.file_type().map_or(false, |t| t.is_dir());
 
-            match (a_is_dir, b_is_dir) {
-                (true, false) => std::cmp::Ordering::Less,
-                (false, true) => std::cmp::Ordering::Greater,
-                _ => a
-                    .file_name()
-                    .to_string_lossy()
-                    .to_string()
-                    .cmp(&b.file_name().to_string_lossy().to_string()),
+            match (is_dir_a, is_dir_b) {
+                (true, false) => Ordering::Less,
+                (false, true) => Ordering::Greater,
+                _ => a.file_name().cmp(&b.file_name()),
             }
         })
+        .skip_hidden(!args.all)
         .max_depth(args.depth)
         .follow_symlinks(false)
-        .skip_hidden(!args.all)
         .map(|(e, d)| (DetailedEntry::from(e), d))
     {
-        let depth_padding = " ".repeat(depth - 1);
-        let name = match entry.kind() {
-            FileKind::File if entry.executable() => entry.name().green().bold(),
-            FileKind::File => entry.name().white(),
-            FileKind::Directory => entry.name().bright_blue().bold(),
-            FileKind::Symlink => entry.name().yellow(),
-            _ => entry.name().white(),
-        };
+        // Create the row array for the table
+        // This will hold the formatted strings for each column
+        let mut row = Vec::new();
 
-        let name_padding = match name.starts_with('.') {
-            true => "",
-            false => " ",
-        };
+        // First, format the name part, which by default includes the depth padding,
+        // the icon, name padding (if doesnt start with a dot), and the name itself.
+        // -1 because the depth start at 1
+        let depth_padding = " ".repeat(depth - 1);
+        let name = entry.name();
 
         let icon = match entry.kind() {
-            FileKind::File => config.file_icon(entry.name()),
-            FileKind::Directory => config.dir_icon(entry.name()),
-            _ => config.unknown_icon(),
+            FileKind::File => conf.indicators.file(&entry.extension().unwrap_or(name)),
+            FileKind::Directory => conf.indicators.dir(&name),
+            _ => conf.indicators.unknown(),
         };
 
-        let name = format!("{}{} {}{}", depth_padding, &icon, name_padding, name);
+        // If the name starts with a dot, we don't add padding,
+        // otherwise we add a space after the icon.
+        // This is to ensure that the first alphanumeric character stays aligned.
+        let name_padding = match (args.all, name.starts_with('.')) {
+            (true, false) => " ",
+            _ => "",
+        };
 
-        let timestamp = entry
+        let name = format!("{}{} {}{}", depth_padding, icon, name_padding, name);
+        let name = match entry.kind() {
+            FileKind::Directory => name.bright_blue().bold(),
+            FileKind::File if entry.executable() => name.green().bold(),
+            FileKind::File => name.white(),
+            FileKind::Symlink => name.yellow(),
+            _ => name.white(),
+        };
+
+        row.push((name.to_string(), Alignment::Left));
+
+        let permissions = entry
+            .permissions()
+            .custom_color((128, 128, 128))
+            .to_string();
+
+        row.push((permissions, Alignment::Center));
+
+        let size = Size(entry.size()).to_string();
+
+        row.push((size, Alignment::Right));
+
+        let last_modified = entry
             .timestamp()
-            .map_or_else(|| "N/A".to_string(), |ts| ts.format("%D %H:%M").to_string())
-            .custom_color((128, 128, 128));
+            .map_or_else(
+                || "N/A".to_string(),
+                |ts| ts.format(&conf.ls.time_format).to_string(),
+            )
+            .custom_color((128, 128, 128))
+            .to_string();
 
-        // Convert absolute path to relative path from git workdir
-        let git_status = git_cache.as_ref().map_or(None, |c| {
-            match c.get_status(&entry.path()).unwrap_or(&GitStatus::Clean) {
-                GitStatus::Untracked => Some("U".green().bold()),
-                GitStatus::Modified => Some("M".yellow()),
-                GitStatus::Deleted => Some("D".red().bold()),
-                GitStatus::Renamed => Some("R".blue()),
-                GitStatus::Ignored => Some("I".custom_color((128, 128, 128))),
-                GitStatus::Conflict => Some("C".magenta().bold()),
-                GitStatus::Clean => Some(" ".to_string().white()),
+        row.push((last_modified, Alignment::Center));
+
+        if let Some(ref cache) = git_cache {
+            if let Some(status) = cache.get_status(&entry.path()) {
+                let status_indicator = match status {
+                    GitStatus::Untracked => "U".green().bold(),
+                    GitStatus::Modified => "M".yellow(),
+                    GitStatus::Deleted => "D".red().bold(),
+                    GitStatus::Renamed => "R".blue(),
+                    GitStatus::Ignored => "I".custom_color((128, 128, 128)),
+                    GitStatus::Conflict => "C".magenta().bold(),
+                    GitStatus::Clean => "-".to_string().white(),
+                };
+
+                row.push((status_indicator.to_string(), Alignment::Center));
+            } else {
+                row.push(("".to_string(), Alignment::Center));
             }
-        });
-
-        let mut rows = Vec::new();
-
-        rows.push(name);
-        rows.push(
-            entry
-                .permissions()
-                .custom_color((128, 128, 128))
-                .to_string(),
-        );
-        rows.push(Size(entry.size()).to_string());
-        rows.push(timestamp.to_string());
-
-        // Dont care about the aligment here,
-        // since if the status, is None, it will be for all files.
-        // while if it is Some, it will be for all files that are tracked by git.
-        if let Some(status) = git_status {
-            rows.push(status.to_string());
         }
 
-        rows.push(format!("󱞫 {}", entry.nlink()));
+        let nlink = format!("{} 󱞫", entry.nlink());
+
+        row.push((nlink, Alignment::Right));
 
         if let Some(target) = entry.link_target() {
-            rows.push(target.to_string_lossy().yellow().to_string());
+            row.push((
+                format!("󱦰 {}", target.display())
+                    .yellow()
+                    .bold()
+                    .to_string(),
+                Alignment::Left,
+            ));
+        } else {
+            row.push(("".to_string(), Alignment::Left));
         }
 
-        table.add_row(rows);
+        table.add_row(row);
     }
 
     println!("total: {}", table.rows().len());

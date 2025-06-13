@@ -2,11 +2,23 @@ use std::fmt::Display;
 use strip_ansi_escapes::strip_str;
 use unicode_width::UnicodeWidthStr;
 
+#[derive(Debug, Clone, Copy)]
+pub enum Alignment {
+    Left,
+    Right,
+    Center,
+}
+
+impl Default for Alignment {
+    fn default() -> Self {
+        Alignment::Left
+    }
+}
+
 pub struct Table<T: Display> {
     // Matrix of rows, made of vectors of type T
     // T must be printable (Display trait)
-    rows: Vec<Vec<T>>,
-
+    rows: Vec<Vec<(T, Alignment)>>,
     // Minimum space between columns
     padding: usize,
 }
@@ -19,8 +31,8 @@ impl<T: Display> Table<T> {
         }
     }
 
-    pub fn add_row<R: Into<Vec<T>>>(&mut self, row: R) {
-        let row: Vec<T> = row.into();
+    pub fn add_row<R: Into<Vec<(T, Alignment)>>>(&mut self, row: R) {
+        let row: Vec<(T, Alignment)> = row.into();
 
         if row.is_empty() {
             return;
@@ -34,7 +46,7 @@ impl<T: Display> Table<T> {
         self
     }
 
-    pub fn rows(&self) -> &Vec<Vec<T>> {
+    pub fn rows(&self) -> &Vec<Vec<(T, Alignment)>> {
         &self.rows
     }
 }
@@ -54,9 +66,8 @@ impl<T: Display> Display for Table<T> {
         let mut widths = vec![0; widths_length];
 
         for row in self.rows.iter() {
-            for (i, cell) in row.iter().enumerate() {
+            for (i, (cell, _)) in row.iter().enumerate() {
                 let len = strip_str(&cell.to_string()).width();
-
                 if len > widths[i] {
                     widths[i] = len;
                 }
@@ -64,7 +75,7 @@ impl<T: Display> Display for Table<T> {
         }
 
         for (i, row) in self.rows.iter().enumerate() {
-            for (j, cell) in row.iter().enumerate() {
+            for (j, (cell, alignment)) in row.iter().enumerate() {
                 let cell_str = cell.to_string();
 
                 // For the last column, don't add padding
@@ -73,9 +84,40 @@ impl<T: Display> Display for Table<T> {
                 } else {
                     // Calculate visual width and required padding
                     let visual_width = strip_str(&cell_str).width();
-                    let total_padding = (widths[j] - visual_width) + self.padding;
+                    let available_width = widths[j];
 
-                    write!(f, "{}{:<padding$}", cell_str, "", padding = total_padding)?;
+                    match alignment {
+                        Alignment::Left => {
+                            let total_padding = (available_width - visual_width) + self.padding;
+                            write!(f, "{}{:<padding$}", cell_str, "", padding = total_padding)?;
+                        }
+                        Alignment::Right => {
+                            let left_padding = available_width - visual_width;
+                            write!(
+                                f,
+                                "{:>padding$}{}{:<padding2$}",
+                                "",
+                                cell_str,
+                                "",
+                                padding = left_padding,
+                                padding2 = self.padding
+                            )?;
+                        }
+                        Alignment::Center => {
+                            let total_space = available_width - visual_width;
+                            let left_padding = total_space / 2;
+                            let right_padding = total_space - left_padding + self.padding;
+                            write!(
+                                f,
+                                "{:>padding$}{}{:<padding2$}",
+                                "",
+                                cell_str,
+                                "",
+                                padding = left_padding,
+                                padding2 = right_padding
+                            )?;
+                        }
+                    }
                 }
             }
 
@@ -84,7 +126,6 @@ impl<T: Display> Display for Table<T> {
                 writeln!(f)?;
             }
         }
-
         Ok(())
     }
 }
