@@ -3,7 +3,7 @@ use std::{
     cmp::Ordering,
     fs::{DirEntry, ReadDir},
     path::{Path, PathBuf},
-    sync::mpsc::{self, Receiver},
+    sync::mpsc::{self, Receiver, Sender},
 };
 
 #[derive(Debug, Clone)]
@@ -195,14 +195,66 @@ impl ThreadedWalk {
         if self.started {
             return;
         }
+
         let (tx, rx) = mpsc::channel();
         let path = self.path.clone();
         let options = self.options.clone();
+
         rayon::spawn(move || {
-            walk_parallel(path, &tx, false, &options);
+            Self::walk(path, &tx, false, &options);
         });
+
         self.rx = Some(rx);
         self.started = true;
+    }
+
+    fn walk(path: PathBuf, tx: &Sender<PathBuf>, is_file: bool, options: &WalkOptions) {
+        // Duplicate the sender.send function
+        // to avoid cloning the path, which can improve performance
+
+        if is_file {
+            // If this is a file, just send the path and return
+            let _ = tx.send(path);
+            return;
+        }
+
+        let Ok(entries) = std::fs::read_dir(&path) else {
+            let _ = tx.send(path);
+            return;
+        };
+
+        let _ = tx.send(path);
+
+        // Separate into files and directories
+        entries
+            .par_bridge()
+            .into_par_iter()
+            .filter_map(|e| e.ok())
+            .for_each(|entry| {
+                if let Some(name) = entry.file_name().to_str() {
+                    if name.starts_with('.') && options.skip_hidden {
+                        return;
+                    }
+                }
+
+                let path = entry.path();
+
+                match entry.file_type() {
+                    Ok(ft) if ft.is_dir() => {
+                        if options.follow_symlinks || !ft.is_symlink() {
+                            // If it's a directory, recursively walk it
+                            Self::walk(path, tx, false, options);
+                        }
+                    }
+
+                    Ok(ft) if ft.is_file() => {
+                        // If it's a file, send the path
+                        let _ = tx.send(path);
+                    }
+
+                    _ => {}
+                }
+            });
     }
 }
 
@@ -213,51 +265,4 @@ impl Iterator for ThreadedWalk {
         self.start();
         self.rx.as_ref().and_then(|rx| rx.recv().ok())
     }
-}
-
-fn walk_parallel(dir: PathBuf, tx: &mpsc::Sender<PathBuf>, file: bool, options: &WalkOptions) {
-    // Duplicate the sender.send function
-    // to avoid cloning the path, which can improve performance
-
-    if file {
-        // If this is a file, just send the path and return
-        let _ = tx.send(dir);
-        return;
-    }
-
-    let Ok(entries) = std::fs::read_dir(&dir) else {
-        let _ = tx.send(dir);
-        return;
-    };
-
-    // Separate into files and directories
-    entries
-        .par_bridge()
-        .into_par_iter()
-        .filter_map(|e| e.ok())
-        .for_each(|entry| {
-            if let Some(name) = entry.file_name().to_str() {
-                if name.starts_with('.') && options.skip_hidden {
-                    return;
-                }
-            }
-
-            let path = entry.path();
-
-            match entry.file_type() {
-                Ok(ft) if ft.is_dir() => {
-                    if options.follow_symlinks || !ft.is_symlink() {
-                        // If it's a directory, recursively walk it
-                        walk_parallel(path, tx, false, options);
-                    }
-                }
-
-                Ok(ft) if ft.is_file() => {
-                    // If it's a file, send the path
-                    let _ = tx.send(path);
-                }
-
-                _ => {}
-            }
-        });
 }

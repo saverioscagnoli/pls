@@ -4,11 +4,26 @@ use crate::{
     dir::{DetailedEntry, FileKind},
     git::{GitCache, GitStatus},
     table::{Alignment, Table},
+    utils::format_template,
     walk::{SyncWalk, ThreadedWalk},
 };
 use clap::{Parser, Subcommand};
 use colored::Colorize;
-use std::{cmp::Ordering, path::PathBuf, time::Instant};
+use std::{
+    cmp::Ordering, collections::HashMap, hash::Hash, path::PathBuf, sync::LazyLock, time::Instant,
+};
+
+fn default_format() -> Vec<&'static str> {
+    Vec::from([
+        "{depth:<2} {icon} {name}",
+        "{persmissions}",
+        "{size}",
+        "{last_modified}",
+        "{git_status}",
+        "{nlink}",
+        "{link_target}",
+    ])
+}
 
 mod bytes;
 mod config;
@@ -63,13 +78,19 @@ struct Args {
 }
 
 fn main() {
-    let args = Args::parse();
-    let config = Config::parse();
+    // let args = Args::parse();
+    // let config = Config::parse();
 
-    match args.command {
-        Some(Command::Find { name, path, all }) => find(name, path, all, &config),
-        _ => ls(&args, &config),
-    }
+    // match args.command {
+    //     Some(Command::Find { name, path, all }) => find(name, path, all, &config),
+    //     _ => ls(&args, &config),
+    // }
+
+    let template = "Hello i am {{name}}!!";
+
+    let values = HashMap::from([("name", "Saverio")]);
+
+    println!("{}", format_template(template, &values));
 }
 
 fn ls(args: &Args, conf: &Config) {
@@ -92,6 +113,9 @@ fn ls(args: &Args, conf: &Config) {
         .follow_symlinks(false)
         .map(|(e, d)| (DetailedEntry::from(e), d))
     {
+        let mut values = HashMap::new();
+
+        values.insert("depth", &format!("{:>2}", depth));
         // Create the row array for the table
         // This will hold the formatted strings for each column
         let mut row = Vec::new();
