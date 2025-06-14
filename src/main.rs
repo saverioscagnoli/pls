@@ -4,11 +4,11 @@ use crate::{
     dir::{DetailedEntry, FileKind},
     git::{GitCache, GitStatus},
     table::{Alignment, Table},
-    walk::SyncWalk,
+    walk::{SyncWalk, ThreadedWalk},
 };
 use clap::{Parser, Subcommand};
 use colored::Colorize;
-use std::{cmp::Ordering, path::PathBuf};
+use std::{cmp::Ordering, path::PathBuf, time::Instant};
 
 mod bytes;
 mod config;
@@ -34,6 +34,11 @@ pub enum Command {
         /// Defaults to the current directory.
         #[clap(default_value = ".", index = 2)]
         path: PathBuf,
+
+        /// Show all files, including hidden ones.
+        /// Defaults to `false`.
+        #[clap(short, long, default_value = "false")]
+        all: bool,
     },
 }
 
@@ -62,7 +67,7 @@ fn main() {
     let config = Config::parse();
 
     match args.command {
-        Some(Command::Find { name, path }) => {}
+        Some(Command::Find { name, path, all }) => find(name, path, all, &config),
         _ => ls(&args, &config),
     }
 }
@@ -183,4 +188,22 @@ fn ls(args: &Args, conf: &Config) {
 
     println!("total: {}", table.rows().len());
     println!("{}", table);
+}
+
+fn find(name: String, path: PathBuf, all: bool, _conf: &Config) {
+    let t0 = Instant::now();
+    let mut c = 0;
+
+    for entry in ThreadedWalk::new(&path).skip_hidden(!all) {
+        if entry
+            .file_name()
+            .map(|os_str| os_str.to_string_lossy() == name)
+            .unwrap_or(false)
+        {
+            c += 1;
+            println!("{}", entry.as_path().display());
+        }
+    }
+
+    println!("Found {} entries in {:?}", c, t0.elapsed());
 }
