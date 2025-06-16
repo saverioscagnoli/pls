@@ -1,4 +1,5 @@
 use rayon::iter::{IntoParallelIterator, ParallelBridge, ParallelIterator};
+use serde::de;
 use std::{
     cmp::Ordering,
     fs::{DirEntry, ReadDir},
@@ -170,7 +171,7 @@ impl Iterator for SyncWalk {
 }
 
 pub struct ThreadedWalk {
-    rx: Option<Receiver<PathBuf>>,
+    rx: Option<Receiver<(PathBuf, usize)>>,
     path: PathBuf,
     options: WalkOptions,
     started: bool,
@@ -191,6 +192,11 @@ impl ThreadedWalk {
         self
     }
 
+    pub fn max_depth(mut self, depth: usize) -> Self {
+        self.options.max_depth = depth;
+        self
+    }
+
     fn start(&mut self) {
         if self.started {
             return;
@@ -201,29 +207,41 @@ impl ThreadedWalk {
         let options = self.options.clone();
 
         rayon::spawn(move || {
-            Self::walk(path, &tx, false, &options);
+            Self::walk(path, &tx, false, &options, 1);
         });
 
         self.rx = Some(rx);
         self.started = true;
     }
 
-    fn walk(path: PathBuf, tx: &Sender<PathBuf>, is_file: bool, options: &WalkOptions) {
+    fn walk(
+        path: PathBuf,
+        tx: &Sender<(PathBuf, usize)>,
+        is_file: bool,
+        options: &WalkOptions,
+        depth: usize,
+    ) {
+        // Check if the maximum depth has been reached
+        if depth > options.max_depth {
+            return;
+        }
+
         // Duplicate the sender.send function
         // to avoid cloning the path, which can improve performance
-
         if is_file {
             // If this is a file, just send the path and return
-            let _ = tx.send(path);
+            let _ = tx.send((path, depth));
             return;
         }
 
         let Ok(entries) = std::fs::read_dir(&path) else {
-            let _ = tx.send(path);
+            let _ = tx.send((path, depth));
             return;
         };
 
-        let _ = tx.send(path);
+        // If this point is reached, it means we are processing a directory
+        // Send the directory path and depth
+        let _ = tx.send((path, depth));
 
         // Separate into files and directories
         entries
@@ -243,13 +261,13 @@ impl ThreadedWalk {
                     Ok(ft) if ft.is_dir() => {
                         if options.follow_symlinks || !ft.is_symlink() {
                             // If it's a directory, recursively walk it
-                            Self::walk(path, tx, false, options);
+                            Self::walk(path, tx, false, options, depth + 1);
                         }
                     }
 
                     Ok(ft) if ft.is_file() => {
                         // If it's a file, send the path
-                        let _ = tx.send(path);
+                        let _ = tx.send((path, depth));
                     }
 
                     _ => {}
@@ -259,7 +277,7 @@ impl ThreadedWalk {
 }
 
 impl Iterator for ThreadedWalk {
-    type Item = PathBuf;
+    type Item = (PathBuf, usize);
 
     fn next(&mut self) -> Option<Self::Item> {
         self.start();

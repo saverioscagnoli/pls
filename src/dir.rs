@@ -108,6 +108,48 @@ impl From<DirEntry> for DetailedEntry {
     }
 }
 
+impl From<&Path> for DetailedEntry {
+    fn from(path: &Path) -> Self {
+        let name = path.file_name().map_or_else(
+            || path.as_os_str().to_string_lossy().to_string(),
+            |name| name.to_string_lossy().to_string(),
+        );
+
+        let ext = path
+            .extension()
+            .and_then(|ext| Some(ext.to_string_lossy().to_string()));
+
+        let meta = path.metadata().ok();
+
+        let kind = std::fs::symlink_metadata(path)
+            .ok()
+            .map(|m| FileKind::from(m.file_type()))
+            .unwrap_or(FileKind::Other);
+
+        Self {
+            path: path.strip_prefix("./").unwrap_or(path).to_path_buf(),
+            name,
+            ext,
+            kind,
+            size: meta.as_ref().map_or(0, |m| m.len()),
+            permissions: meta
+                .as_ref()
+                .map(|m| get_permissions(m))
+                .unwrap_or_else(|| "unknown".to_string()),
+            timestamp: meta
+                .as_ref()
+                .and_then(|m| m.modified().ok())
+                .and_then(|t| Some(DateTime::from(t))),
+            nlink: meta.as_ref().map_or(1, |m| m.nlink()),
+            link_target: match kind {
+                FileKind::Symlink => std::fs::read_link(path).ok(),
+                _ => None,
+            },
+            executable: meta.as_ref().map_or(false, |m| m.mode() & 0o11 != 0),
+        }
+    }
+}
+
 impl DetailedEntry {
     pub fn path(&self) -> &PathBuf {
         &self.path
@@ -117,7 +159,7 @@ impl DetailedEntry {
         self.name.as_str()
     }
 
-    pub fn extension(&self) -> Option<&str> {
+    pub fn ext(&self) -> Option<&str> {
         self.ext.as_deref()
     }
 

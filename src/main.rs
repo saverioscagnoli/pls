@@ -1,37 +1,25 @@
-use crate::{
-    bytes::Size,
-    config::Config,
-    dir::{DetailedEntry, FileKind},
-    git::{GitCache, GitStatus},
-    table::{Alignment, Table},
-    utils::format_template,
-    walk::{SyncWalk, ThreadedWalk},
-};
-use clap::{Parser, Subcommand};
-use colored::Colorize;
-use std::{
-    cmp::Ordering, collections::HashMap, hash::Hash, path::PathBuf, sync::LazyLock, time::Instant,
-};
-
-fn default_format() -> Vec<&'static str> {
-    Vec::from([
-        "{depth:<2} {icon} {name}",
-        "{persmissions}",
-        "{size}",
-        "{last_modified}",
-        "{git_status}",
-        "{nlink}",
-        "{link_target}",
-    ])
-}
-
 mod bytes;
 mod config;
 mod dir;
+mod error;
 mod git;
 mod table;
 mod utils;
 mod walk;
+
+use crate::{
+    bytes::Size,
+    config::{Config, FormatPart, TemplateVariable},
+    dir::{DetailedEntry, FileKind},
+    git::{GitCache, GitStatus},
+    table::{Alignment, Table},
+    walk::{SyncWalk, ThreadedWalk},
+};
+
+use clap::{Parser, Subcommand};
+use colored::Colorize;
+use serde::de;
+use std::{cmp::Ordering, collections::HashMap, path::PathBuf, time::Instant};
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
@@ -77,134 +65,136 @@ struct Args {
     command: Option<Command>,
 }
 
+type Walker<T> = Box<dyn Iterator<Item = T>>;
+
 fn main() {
-    // let args = Args::parse();
-    // let config = Config::parse();
+    let args = Args::parse();
+    let config = Config::parse();
 
-    // match args.command {
-    //     Some(Command::Find { name, path, all }) => find(name, path, all, &config),
-    //     _ => ls(&args, &config),
-    // }
+    match args.command {
+        Some(Command::Find { name, path, all }) => find(name, path, all, &config),
+        _ => {
+            // If the user sets the max depth to >= 3, it makes more sense to use a multithreaded walker
+            // to speed up the process
+            // If not, use a single-threaded walker
+            let walker: Box<dyn Iterator<Item = (DetailedEntry, usize)>> = match args.depth {
+                d if d < 3 => Box::new(
+                    SyncWalk::new(&args.path)
+                        .skip_hidden(!args.all)
+                        .max_depth(args.depth)
+                        .map(|(entry, path)| {
+                            let detailed_entry = DetailedEntry::from(entry);
+                            (detailed_entry, path)
+                        }),
+                ),
 
-    let template = "Hello i am {{name}}!!";
+                _ => Box::new(
+                    ThreadedWalk::new(&args.path)
+                        .skip_hidden(!args.all)
+                        .max_depth(args.depth)
+                        .map(|(path, depth)| {
+                            let detailed_entry = DetailedEntry::from(path.as_path());
+                            (detailed_entry, depth)
+                        }),
+                ),
+            };
 
-    let values = HashMap::from([("name", "Saverio")]);
-
-    println!("{}", format_template(template, &values));
+            ls(&args, &config, walker);
+        }
+    }
 }
 
-fn ls(args: &Args, conf: &Config) {
-    let mut table = Table::new().padding(conf.ls.padding);
-    let git_cache = GitCache::new(&args.path);
+/// This is the command that lists the files and directories.
+/// It's the default behavior if no subcommand is provided
+fn ls(args: &Args, conf: &Config, walker: Walker<(DetailedEntry, usize)>) {
+    // Table for pretty printing the output
+    let mut table: Table<String> = Table::new().padding(conf.ls.padding);
 
-    for (entry, depth) in SyncWalk::new(&args.path)
-        .sort_by(|a, b| {
-            let is_dir_a = a.file_type().map_or(false, |t| t.is_dir());
-            let is_dir_b = b.file_type().map_or(false, |t| t.is_dir());
+    // Create a vector to hold all the variables that are actually used in the format
+    // This is used to calculate only the variables that are actually needed
+    // saving some time and memory
 
-            match (is_dir_a, is_dir_b) {
-                (true, false) => Ordering::Less,
-                (false, true) => Ordering::Greater,
-                _ => a.file_name().cmp(&b.file_name()),
+    // If `args.path` is not a git repository, the default git cache will be empty.
+    // see `GitCache::new`
+    let git_cache = GitCache::new(&args.path).unwrap_or_default();
+
+    for (entry, depth) in walker {
+        let mut row: Vec<(String, Alignment)> = Vec::new();
+
+        for t in &conf.ls.format {
+            let mut formatted = String::new();
+
+            for part in t.iter() {
+                match part {
+                    FormatPart::Variable(var) => match var {
+                        TemplateVariable::Depth => {
+                            formatted.push_str(&depth.to_string());
+                        }
+
+                        TemplateVariable::Name => {
+                            let name = entry.name().to_string();
+                            formatted.push_str(&name);
+                        }
+
+                        TemplateVariable::Icon => {
+                            let icon = match entry.kind() {
+                                FileKind::File => {
+                                    conf.indicators.file(entry.ext().as_deref().unwrap_or(""))
+                                }
+                                FileKind::Directory => conf.indicators.dir(entry.name()),
+                                _ => conf.indicators.unknown(),
+                            };
+
+                            formatted.push_str(&icon);
+                        }
+
+                        TemplateVariable::Permissions => {
+                            let permissions = entry.permissions();
+                            formatted.push_str(&permissions);
+                        }
+
+                        TemplateVariable::Size => {
+                            let size = entry.size();
+                            formatted.push_str(&size.to_string());
+                        }
+
+                        TemplateVariable::LastModified => {
+                            if let Some(timestamp) = entry.timestamp() {
+                                formatted
+                                    .push_str(&timestamp.format(&conf.ls.time_format).to_string());
+                            } else {
+                                formatted.push_str("N/A");
+                            }
+                        }
+
+                        TemplateVariable::GitStatus => match git_cache.get_status(&entry.path()) {
+                            Some(s) => formatted.push_str(&s.to_string()),
+                            None => formatted.push_str("N/A"),
+                        },
+
+                        TemplateVariable::Nlink => {
+                            formatted.push_str(&entry.nlink().to_string());
+                        }
+
+                        TemplateVariable::LinkTarget => {
+                            if let Some(target) = entry.link_target() {
+                                formatted.push_str(&target.to_string_lossy());
+                            }
+                        }
+
+                        _ => {}
+                    },
+
+                    FormatPart::Literal(s) => formatted.push_str(s),
+                }
             }
-        })
-        .skip_hidden(!args.all)
-        .max_depth(args.depth)
-        .follow_symlinks(false)
-        .map(|(e, d)| (DetailedEntry::from(e), d))
-    {
-        let mut values = HashMap::new();
 
-        values.insert("depth", &format!("{:>2}", depth));
-        // Create the row array for the table
-        // This will hold the formatted strings for each column
-        let mut row = Vec::new();
-
-        // First, format the name part, which by default includes the depth padding,
-        // the icon, name padding (if doesnt start with a dot), and the name itself.
-        // -1 because the depth start at 1
-        let depth_padding = " ".repeat(depth - 1);
-        let name = entry.name();
-
-        let icon = match entry.kind() {
-            FileKind::File => conf.indicators.file(&entry.extension().unwrap_or(name)),
-            FileKind::Directory => conf.indicators.dir(&name),
-            _ => conf.indicators.unknown(),
-        };
-
-        // If the name starts with a dot, we don't add padding,
-        // otherwise we add a space after the icon.
-        // This is to ensure that the first alphanumeric character stays aligned.
-        let name_padding = match (args.all, name.starts_with('.')) {
-            (true, false) => " ",
-            _ => "",
-        };
-
-        let name = format!("{}{} {}{}", depth_padding, icon, name_padding, name);
-        let name = match entry.kind() {
-            FileKind::Directory => name.bright_blue().bold(),
-            FileKind::File if entry.executable() => name.green().bold(),
-            FileKind::File => name.white(),
-            FileKind::Symlink => name.yellow(),
-            _ => name.white(),
-        };
-
-        row.push((name.to_string(), Alignment::Left));
-
-        let permissions = entry
-            .permissions()
-            .custom_color((128, 128, 128))
-            .to_string();
-
-        row.push((permissions, Alignment::Center));
-
-        let size = Size(entry.size()).to_string();
-
-        row.push((size, Alignment::Right));
-
-        let last_modified = entry
-            .timestamp()
-            .map_or_else(
-                || "N/A".to_string(),
-                |ts| ts.format(&conf.ls.time_format).to_string(),
-            )
-            .custom_color((128, 128, 128))
-            .to_string();
-
-        row.push((last_modified, Alignment::Center));
-
-        if let Some(ref cache) = git_cache {
-            if let Some(status) = cache.get_status(&entry.path()) {
-                let status_indicator = match status {
-                    GitStatus::Untracked => "U".green().bold(),
-                    GitStatus::Modified => "M".yellow(),
-                    GitStatus::Deleted => "D".red().bold(),
-                    GitStatus::Renamed => "R".blue(),
-                    GitStatus::Ignored => "I".custom_color((128, 128, 128)),
-                    GitStatus::Conflict => "C".magenta().bold(),
-                    GitStatus::Clean => "-".to_string().white(),
-                };
-
-                row.push((status_indicator.to_string(), Alignment::Center));
-            } else {
-                row.push(("".to_string(), Alignment::Center));
-            }
+            row.push((formatted, Alignment::Left));
         }
 
-        let nlink = format!("{} 󱞫", entry.nlink());
-
-        row.push((nlink, Alignment::Right));
-
-        if let Some(target) = entry.link_target() {
-            row.push((
-                format!("󱦰 {}", target.display())
-                    .yellow()
-                    .bold()
-                    .to_string(),
-                Alignment::Left,
-            ));
-        } else {
-            row.push(("".to_string(), Alignment::Left));
+        // Skip empty rows
+        if row.is_empty() {
+            continue;
         }
 
         table.add_row(row);
@@ -218,14 +208,14 @@ fn find(name: String, path: PathBuf, all: bool, _conf: &Config) {
     let t0 = Instant::now();
     let mut c = 0;
 
-    for entry in ThreadedWalk::new(&path).skip_hidden(!all) {
-        if entry
+    for (path, _) in ThreadedWalk::new(&path).skip_hidden(!all) {
+        if path
             .file_name()
             .map(|os_str| os_str.to_string_lossy() == name)
             .unwrap_or(false)
         {
             c += 1;
-            println!("{}", entry.as_path().display());
+            println!("{}", path.as_path().display());
         }
     }
 

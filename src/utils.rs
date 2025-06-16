@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::fs::Metadata;
 use std::os::unix::fs::PermissionsExt;
 
-use nix::libc::RSI;
+use crate::error::PlsError;
 
 pub fn get_permissions(metadata: &Metadata) -> String {
     let mode = metadata.permissions().mode();
@@ -24,7 +24,7 @@ fn display_permission(bits: u32) -> String {
     )
 }
 
-pub fn format_template(template: &str, values: &HashMap<&str, &str>) -> String {
+pub fn format_template(template: &str, values: &HashMap<&str, String>) -> Result<String, PlsError> {
     let mut result = String::new();
     let mut chars = template.chars().peekable();
 
@@ -48,13 +48,13 @@ pub fn format_template(template: &str, values: &HashMap<&str, &str>) -> String {
 
                     match chars.next() {
                         Some(name_ch) => var_str.push(name_ch),
-                        None => todo!("Fallback"),
+                        None => return Err(PlsError::NoClosedBracket),
                     }
                 }
 
                 match values.get(var_str.as_str()) {
                     Some(value) => result.push_str(value),
-                    None => todo!("Fallback"),
+                    None => return Err(PlsError::NoValueForTemplate(var_str)),
                 }
             }
             '}' => {
@@ -70,5 +70,23 @@ pub fn format_template(template: &str, values: &HashMap<&str, &str>) -> String {
         }
     }
 
-    result
+    Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn template_basic() {
+        let values = HashMap::from([("name", "John".to_string()), ("age", "25".to_string())]);
+        let template = "Hello, my name is {name} and I am {age}";
+
+        assert_eq!(
+            format_template(template, &values).unwrap(),
+            "Hello, my name is John and I am 25"
+        );
+    }
+
+    fn template_parsing_error() {}
 }
