@@ -4,20 +4,23 @@ mod dir;
 mod error;
 mod git;
 mod table;
+mod template;
 mod utils;
 mod walk;
 
 use crate::{
     bytes::Size,
-    config::{Config, FormatPart, TemplateVariable},
+    config::Config,
     dir::{DetailedEntry, FileKind},
     git::{GitCache, GitStatus},
-    table::{Alignment, Table},
+    table::Table,
+    template::{Alignment, Part, Var, VarOp},
     walk::{SyncWalk, ThreadedWalk},
 };
 
 use clap::{Parser, Subcommand};
 use colored::Colorize;
+use nix::libc::CIBAUD;
 use serde::de;
 use std::{cmp::Ordering, collections::HashMap, path::PathBuf, time::Instant};
 
@@ -82,6 +85,16 @@ fn main() {
                     SyncWalk::new(&args.path)
                         .skip_hidden(!args.all)
                         .max_depth(args.depth)
+                        .sort_by(|a, b| {
+                            let is_dir_a = a.file_type().map_or(false, |t| t.is_dir());
+                            let is_dir_b = b.file_type().map_or(false, |t| t.is_dir());
+
+                            match (is_dir_a, is_dir_b) {
+                                (true, false) => Ordering::Less,
+                                (false, true) => Ordering::Greater,
+                                _ => a.file_name().cmp(&b.file_name()),
+                            }
+                        })
                         .map(|(entry, path)| {
                             let detailed_entry = DetailedEntry::from(entry);
                             (detailed_entry, path)
@@ -110,13 +123,11 @@ fn ls(args: &Args, conf: &Config, walker: Walker<(DetailedEntry, usize)>) {
     // Table for pretty printing the output
     let mut table: Table<String> = Table::new().padding(conf.ls.padding);
 
-    // Create a vector to hold all the variables that are actually used in the format
-    // This is used to calculate only the variables that are actually needed
-    // saving some time and memory
-
     // If `args.path` is not a git repository, the default git cache will be empty.
     // see `GitCache::new`
     let git_cache = GitCache::new(&args.path).unwrap_or_default();
+
+    println!("{:?}", &conf.ls.format);
 
     for (entry, depth) in walker {
         let mut row: Vec<(String, Alignment)> = Vec::new();
@@ -124,72 +135,30 @@ fn ls(args: &Args, conf: &Config, walker: Walker<(DetailedEntry, usize)>) {
         for t in &conf.ls.format {
             let mut formatted = String::new();
 
-            for part in t.iter() {
-                match part {
-                    FormatPart::Variable(var) => match var {
-                        TemplateVariable::Depth => {
-                            formatted.push_str(&depth.to_string());
-                        }
+            for p in t.parts() {
+                match p {
+                    Part::Literal(s) => formatted.push_str(s),
 
-                        TemplateVariable::Name => {
-                            let name = entry.name().to_string();
-                            formatted.push_str(&name);
-                        }
-
-                        TemplateVariable::Icon => {
-                            let icon = match entry.kind() {
-                                FileKind::File => {
-                                    conf.indicators.file(entry.ext().as_deref().unwrap_or(""))
-                                }
-                                FileKind::Directory => conf.indicators.dir(entry.name()),
-                                _ => conf.indicators.unknown(),
-                            };
-
-                            formatted.push_str(&icon);
-                        }
-
-                        TemplateVariable::Permissions => {
-                            let permissions = entry.permissions();
-                            formatted.push_str(&permissions);
-                        }
-
-                        TemplateVariable::Size => {
-                            let size = entry.size();
-                            formatted.push_str(&size.to_string());
-                        }
-
-                        TemplateVariable::LastModified => {
-                            if let Some(timestamp) = entry.timestamp() {
-                                formatted
-                                    .push_str(&timestamp.format(&conf.ls.time_format).to_string());
-                            } else {
-                                formatted.push_str("N/A");
-                            }
-                        }
-
-                        TemplateVariable::GitStatus => match git_cache.get_status(&entry.path()) {
-                            Some(s) => formatted.push_str(&s.to_string()),
-                            None => formatted.push_str("N/A"),
-                        },
-
-                        TemplateVariable::Nlink => {
-                            formatted.push_str(&entry.nlink().to_string());
-                        }
-
-                        TemplateVariable::LinkTarget => {
-                            if let Some(target) = entry.link_target() {
-                                formatted.push_str(&target.to_string_lossy());
-                            }
-                        }
-
+                    Part::Op(VarOp::Replace(var)) => match var {
+                        Var::Name => formatted.push_str(entry.name()),
                         _ => {}
                     },
 
-                    FormatPart::Literal(s) => formatted.push_str(s),
+                    Part::Op(VarOp::Repeat { pattern, count_var }) => match pattern {
+                        Var::Unknown(s) => match count_var {
+                            Var::Depth => {
+                                formatted.push_str(&s.repeat(depth - 1));
+                            }
+                            _ => {}
+                        },
+                        _ => {}
+                    },
+
+                    _ => {}
                 }
             }
 
-            row.push((formatted, Alignment::Left));
+            row.push((formatted, t.alignment()));
         }
 
         // Skip empty rows

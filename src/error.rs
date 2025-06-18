@@ -22,6 +22,8 @@ pub enum PlsError {
     /// "Hello I am {name and I am {age}" // -> Returns NoClosedBracket
     /// ```
     NoClosedBracket,
+
+    InvalidConditionalFormat,
 }
 
 impl Display for PlsError {
@@ -36,6 +38,10 @@ impl Display for PlsError {
                     f,
                     "Encountered an open bracket without a corresponding closed one."
                 )
+            }
+
+            PlsError::InvalidConditionalFormat => {
+                write!(f, "Encountered invalid format for a conditional operation")
             }
         }
     }

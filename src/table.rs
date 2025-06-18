@@ -2,18 +2,7 @@ use std::fmt::Display;
 use strip_ansi_escapes::strip_str;
 use unicode_width::UnicodeWidthStr;
 
-#[derive(Debug, Clone, Copy)]
-pub enum Alignment {
-    Left,
-    Right,
-    Center,
-}
-
-impl Default for Alignment {
-    fn default() -> Self {
-        Alignment::Left
-    }
-}
+use crate::template::Alignment;
 
 pub struct Table<T: Display> {
     // Matrix of rows, made of vectors of type T
@@ -77,22 +66,28 @@ impl<T: Display> Display for Table<T> {
         for (i, row) in self.rows.iter().enumerate() {
             for (j, (cell, alignment)) in row.iter().enumerate() {
                 let cell_str = cell.to_string();
+                let visual_width = strip_str(&cell_str).width();
+                let available_width = widths[j];
+                let is_last_column = j == row.len() - 1;
 
-                // For the last column, don't add padding
-                if j == row.len() - 1 {
-                    write!(f, "{}", cell_str)?;
-                } else {
-                    // Calculate visual width and required padding
-                    let visual_width = strip_str(&cell_str).width();
-                    let available_width = widths[j];
-
-                    match alignment {
-                        Alignment::Left => {
+                match alignment {
+                    Alignment::Left => {
+                        if is_last_column {
+                            // Last column: just write the cell content, no padding
+                            write!(f, "{}", cell_str)?;
+                        } else {
+                            // Regular column: apply left alignment with padding
                             let total_padding = (available_width - visual_width) + self.padding;
                             write!(f, "{}{:<padding$}", cell_str, "", padding = total_padding)?;
                         }
-                        Alignment::Right => {
-                            let left_padding = available_width - visual_width;
+                    }
+                    Alignment::Right => {
+                        let left_padding = available_width - visual_width;
+                        if is_last_column {
+                            // Last column: right-align within available width, no trailing padding
+                            write!(f, "{:>padding$}{}", "", cell_str, padding = left_padding)?;
+                        } else {
+                            // Regular column: right-align with inter-column padding
                             write!(
                                 f,
                                 "{:>padding$}{}{:<padding2$}",
@@ -103,10 +98,13 @@ impl<T: Display> Display for Table<T> {
                                 padding2 = self.padding
                             )?;
                         }
-                        Alignment::Center => {
-                            let total_space = available_width - visual_width;
-                            let left_padding = total_space / 2;
-                            let right_padding = total_space - left_padding + self.padding;
+                    }
+                    Alignment::Center => {
+                        let total_space = available_width - visual_width;
+                        let left_padding = total_space / 2;
+                        let right_padding = total_space - left_padding;
+                        if is_last_column {
+                            // Last column: center within available width, no trailing padding
                             write!(
                                 f,
                                 "{:>padding$}{}{:<padding2$}",
@@ -115,6 +113,17 @@ impl<T: Display> Display for Table<T> {
                                 "",
                                 padding = left_padding,
                                 padding2 = right_padding
+                            )?;
+                        } else {
+                            // Regular column: center with inter-column padding
+                            write!(
+                                f,
+                                "{:>padding$}{}{:<padding2$}",
+                                "",
+                                cell_str,
+                                "",
+                                padding = left_padding,
+                                padding2 = right_padding + self.padding
                             )?;
                         }
                     }
