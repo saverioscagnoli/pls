@@ -1,12 +1,29 @@
-use std::collections::HashMap;
-
-use serde::Deserialize;
+use chrono::{DateTime, Local};
+use serde::{Deserialize, Deserializer};
 use serde_inline_default::serde_inline_default;
+use std::{collections::HashMap, ops::Deref, str::FromStr};
+
+use crate::template::Template;
 
 #[serde_inline_default]
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct LsConfig {
+    /// The format to use for the output.
+    /// This is a list of strings, where each string is a format specifier.
+    /// The available format specifiers are  :
+    /// - `{icon}`: The icon for the file or directory.
+    /// - `{name}`: The name of the file or directory.
+    /// - `{permissions}`: The permissions of the file or directory.
+    /// - `{size}`: The size of the file or directory in bytes.
+    /// - `{last_modified}`: The last modified date and time of the file or directory.
+    /// - `{git_status}`: The git status of the file or directory (if applicable).
+    /// - `{nlink}`: The number of hard links to the file or directory.
+    /// - `{link_target}`: The target of the symlink (if applicable).
+    /// - `{depth}`: The depth of the file or directory in the tree.
+    #[serde_inline_default(Template::default_templates())]
+    pub format: Vec<Template>,
+
     /// The padding between the columns in the output.
     /// This is the number of spaces to use for padding.
     /// The default value is `2`.

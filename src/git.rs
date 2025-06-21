@@ -76,6 +76,7 @@ impl From<git2::Status> for GitStatus {
     }
 }
 
+#[derive(Debug, Clone, Default)]
 pub struct GitCache {
     status: HashMap<PathBuf, GitStatus>,
 }

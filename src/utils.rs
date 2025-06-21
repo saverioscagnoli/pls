@@ -1,5 +1,8 @@
+use std::collections::HashMap;
 use std::fs::Metadata;
 use std::os::unix::fs::PermissionsExt;
+
+use crate::error::PlsError;
 
 pub fn get_permissions(metadata: &Metadata) -> String {
     let mode = metadata.permissions().mode();
