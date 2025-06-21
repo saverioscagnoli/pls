@@ -90,8 +90,8 @@ impl GitCache {
         status_opts
             .include_untracked(true)
             .renames_head_to_index(true)
-            .recurse_ignored_dirs(true)
-            .recurse_untracked_dirs(true)
+            //.recurse_ignored_dirs(true)
+            //.recurse_untracked_dirs(true)
             .include_ignored(true)
             .show(git2::StatusShow::IndexAndWorkdir);
 

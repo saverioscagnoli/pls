@@ -1,8 +1,7 @@
+use figura::Alignment;
 use std::fmt::Display;
 use strip_ansi_escapes::strip_str;
 use unicode_width::UnicodeWidthStr;
-
-use crate::template::Alignment;
 
 pub struct Table<T: Display> {
     // Matrix of rows, made of vectors of type T

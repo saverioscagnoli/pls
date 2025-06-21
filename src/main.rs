@@ -4,7 +4,6 @@ mod dir;
 mod error;
 mod git;
 mod table;
-mod template;
 mod utils;
 mod walk;
 
@@ -14,12 +13,12 @@ use crate::{
     dir::{DetailedEntry, FileKind},
     git::{GitCache, GitStatus},
     table::Table,
-    template::{Alignment, Part, Var, VarOp},
     walk::{SyncWalk, ThreadedWalk},
 };
 
 use clap::{Parser, Subcommand};
 use colored::Colorize;
+use figura::{DefaultParser, Template, Value};
 use nix::libc::CIBAUD;
 use serde::de;
 use std::{cmp::Ordering, collections::HashMap, path::PathBuf, time::Instant};
@@ -127,38 +126,32 @@ fn ls(args: &Args, conf: &Config, walker: Walker<(DetailedEntry, usize)>) {
     // see `GitCache::new`
     let git_cache = GitCache::new(&args.path).unwrap_or_default();
 
-    println!("{:?}", &conf.ls.format);
-
     for (entry, depth) in walker {
-        let mut row: Vec<(String, Alignment)> = Vec::new();
+        let mut row = Vec::new();
+        let mut context = HashMap::new();
+
+        let name = entry.name();
+        let ext = entry.ext().unwrap_or("");
+
+        let icon = match entry.kind() {
+            FileKind::Directory => conf.indicators.dir(&name),
+            FileKind::File => conf.indicators.file(&ext),
+            _ => conf.indicators.unknown(),
+        };
+
+        context.insert("depth", Value::Int(depth as i64));
+        context.insert("icon", Value::String(icon));
+        context.insert("name", Value::String(entry.name().to_string()));
+        context.insert(
+            "permissions",
+            Value::String(entry.permissions().to_string()),
+        );
 
         for t in &conf.ls.format {
-            let mut formatted = String::new();
-
-            for p in t.parts() {
-                match p {
-                    Part::Literal(s) => formatted.push_str(s),
-
-                    Part::Op(VarOp::Replace(var)) => match var {
-                        Var::Name => formatted.push_str(entry.name()),
-                        _ => {}
-                    },
-
-                    Part::Op(VarOp::Repeat { pattern, count_var }) => match pattern {
-                        Var::Unknown(s) => match count_var {
-                            Var::Depth => {
-                                formatted.push_str(&s.repeat(depth - 1));
-                            }
-                            _ => {}
-                        },
-                        _ => {}
-                    },
-
-                    _ => {}
-                }
+            match Template::<'{', '}'>::parse::<DefaultParser>(&t) {
+                Ok(t) => row.push((t.format(&context).unwrap(), t.alignment())),
+                Err(e) => eprintln!("Error during formatting {}", e),
             }
-
-            row.push((formatted, t.alignment()));
         }
 
         // Skip empty rows

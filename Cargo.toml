@@ -20,3 +20,4 @@ serde-inline-default = "0.2.3"
 strip-ansi-escapes = "0.2.1"
 toml = "0.8.23"
 unicode-width = "0.2.1"
+figura = { path = "figura" }

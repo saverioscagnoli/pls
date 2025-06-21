@@ -3,8 +3,6 @@ use serde::{Deserialize, Deserializer};
 use serde_inline_default::serde_inline_default;
 use std::{collections::HashMap, ops::Deref, str::FromStr};
 
-use crate::template::Template;
-
 #[serde_inline_default]
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
@@ -21,8 +19,8 @@ pub struct LsConfig {
     /// - `{nlink}`: The number of hard links to the file or directory.
     /// - `{link_target}`: The target of the symlink (if applicable).
     /// - `{depth}`: The depth of the file or directory in the tree.
-    #[serde_inline_default(Template::default_templates())]
-    pub format: Vec<Template>,
+    #[serde_inline_default(vec!["{ :depth} {icon}  {name}".to_string(), "{permissions}".to_string()])]
+    pub format: Vec<String>,
 
     /// The padding between the columns in the output.
     /// This is the number of spaces to use for padding.
