@@ -19,7 +19,7 @@ pub struct LsConfig {
     /// - `{nlink}`: The number of hard links to the file or directory.
     /// - `{link_target}`: The target of the symlink (if applicable).
     /// - `{depth}`: The depth of the file or directory in the tree.
-    #[serde_inline_default(vec!["{ :depth} {icon}  {name}".to_string(), "{permissions}".to_string()])]
+    #[serde_inline_default(vec!["{ :depth}{icon}  {name}".to_string(), "{permissions^}".to_string()])]
     pub format: Vec<String>,
 
     /// The padding between the columns in the output.

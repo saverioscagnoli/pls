@@ -8,19 +8,15 @@ mod utils;
 mod walk;
 
 use crate::{
-    bytes::Size,
     config::Config,
     dir::{DetailedEntry, FileKind},
-    git::{GitCache, GitStatus},
+    git::GitCache,
     table::Table,
     walk::{SyncWalk, ThreadedWalk},
 };
 
 use clap::{Parser, Subcommand};
-use colored::Colorize;
 use figura::{DefaultParser, Template, Value};
-use nix::libc::CIBAUD;
-use serde::de;
 use std::{cmp::Ordering, collections::HashMap, path::PathBuf, time::Instant};
 
 #[derive(Debug, Subcommand)]
@@ -126,6 +122,14 @@ fn ls(args: &Args, conf: &Config, walker: Walker<(DetailedEntry, usize)>) {
     // see `GitCache::new`
     let git_cache = GitCache::new(&args.path).unwrap_or_default();
 
+    let templates = conf
+        .ls
+        .format
+        .iter()
+        .map(|t| Template::<'{', '}'>::parse(&t))
+        .filter_map(Result::ok)
+        .collect::<Vec<_>>();
+
     for (entry, depth) in walker {
         let mut row = Vec::new();
         let mut context = HashMap::new();
@@ -139,7 +143,7 @@ fn ls(args: &Args, conf: &Config, walker: Walker<(DetailedEntry, usize)>) {
             _ => conf.indicators.unknown(),
         };
 
-        context.insert("depth", Value::Int(depth as i64));
+        context.insert("depth", Value::Int(depth as i64 - 1));
         context.insert("icon", Value::String(icon));
         context.insert("name", Value::String(entry.name().to_string()));
         context.insert(
@@ -147,10 +151,10 @@ fn ls(args: &Args, conf: &Config, walker: Walker<(DetailedEntry, usize)>) {
             Value::String(entry.permissions().to_string()),
         );
 
-        for t in &conf.ls.format {
-            match Template::<'{', '}'>::parse::<DefaultParser>(&t) {
-                Ok(t) => row.push((t.format(&context).unwrap(), t.alignment())),
-                Err(e) => eprintln!("Error during formatting {}", e),
+        for t in &templates {
+            match t.format(&context) {
+                Ok(v) => row.push((v, t.alignment())),
+                Err(e) => eprintln!("{}", e),
             }
         }
 
