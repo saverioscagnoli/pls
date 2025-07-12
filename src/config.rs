@@ -1,27 +1,44 @@
+use serde::Deserialize;
+use smacro::s;
 use std::path::PathBuf;
 
-use serde::Deserialize;
-use serde_inline_default::serde_inline_default;
-use smacro::s;
-
-#[serde_inline_default]
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct LsConfig {
-    #[serde_inline_default(vec![
-        s!("{ :depth}{name}"),
-        s!("{permissions}"),
-        s!("{size>}"),
-        s!("{last_modified}"),
-        s!("{nlink>} 󱞫"),
-    ])]
+    #[serde(default = "LsConfig::default_templates")]
     pub templates: Vec<String>,
 
-    #[serde_inline_default(s!("%b %d %H:%M"))]
+    #[serde(default = "LsConfig::default_time_format")]
     pub time_format: String,
+}
+
+impl LsConfig {
+    fn default_templates() -> Vec<String> {
+        vec![
+            s!("{ :depth}{name}"),
+            s!("{permissions}"),
+            s!("{size}"),
+            s!("{last_modified}"),
+            s!("{nlink}"),
+        ]
+    }
+
+    fn default_time_format() -> String {
+        s!("%b %d %H:%M")
+    }
+}
+
+impl Default for LsConfig {
+    fn default() -> Self {
+        Self {
+            templates: Self::default_templates(),
+            time_format: Self::default_time_format(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct Config {
+    #[serde(default)]
     pub ls: LsConfig,
 }
 
@@ -39,10 +56,12 @@ impl Config {
             return Config::default();
         };
 
-        let Ok(config) = toml::from_str(&config) else {
-            return Config::default();
-        };
-
-        config
+        match toml::from_str(&config) {
+            Ok(config) => config,
+            Err(e) => {
+                eprintln!("Failed to parse config file: {}", e);
+                Config::default()
+            }
+        }
     }
 }

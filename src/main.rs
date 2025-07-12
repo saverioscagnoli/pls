@@ -1,10 +1,10 @@
 mod config;
-mod directives;
+mod style;
 mod table;
 mod utils;
 mod walk;
 
-use crate::{config::Config, directives::CustomParser, table::Table, walk::DirWalk};
+use crate::{config::Config, table::Table, walk::DirWalk};
 use chrono::{DateTime, Local};
 use clap::Parser;
 use figura::{Template, Value};
@@ -70,7 +70,7 @@ fn ls(args: &Args, conf: &Config) {
         .ls
         .templates
         .iter()
-        .filter_map(|t| Template::<'{', '}'>::with_parser::<CustomParser>(t).ok())
+        .filter_map(|t| Template::<'{', '}'>::parse(t).ok())
         .collect::<Vec<_>>();
 
     let mut table = Table::new().padding(2);
