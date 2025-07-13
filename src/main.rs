@@ -11,6 +11,38 @@ use smacro::map;
 use std::{collections::HashMap, path::PathBuf, usize};
 
 #[derive(Debug, Clone, Parser)]
+struct FindArgs {
+    #[arg(index = 1)]
+    name: String,
+
+    #[arg(index = 2, default_value = ".")]
+    path: PathBuf,
+
+    #[arg(short, long, default_value = "false")]
+    all: bool,
+
+    #[arg(short, long, default_value = "18446744073709551615")]
+    depth: usize,
+
+    #[arg(short, long, default_value = "false")]
+    timed: bool,
+}
+
+#[derive(Debug, Clone, Parser)]
+enum Command {
+    Find {
+        #[clap(flatten)]
+        args: FindArgs,
+    },
+
+    /// Used only for comodity (unwrap or when matching),
+    /// since this is the deafult command,
+    /// but clap doesnt allow unnamed commands,
+    /// so the args for this are in the `Args` struct
+    Ls,
+}
+
+#[derive(Debug, Clone, Parser)]
 struct Args {
     #[arg(index = 1, default_value = ".")]
     path: PathBuf,
@@ -23,19 +55,40 @@ struct Args {
 
     #[arg(short, long, default_value = "false")]
     timed: bool,
+
+    #[clap(subcommand)]
+    command: Option<Command>,
 }
 
 fn main() {
     let args = Args::parse();
     let mut t = None;
 
-    if args.timed {
-        use std::time::Instant;
-        t = Some(Instant::now());
-    }
-
     let config = Config::parse();
 
+    match args.command.as_ref().unwrap_or(&Command::Ls) {
+        Command::Find { args } => {
+            if args.timed {
+                t = Some(std::time::Instant::now());
+            }
+
+            find(args, &config);
+        }
+        Command::Ls => {
+            if args.timed {
+                t = Some(std::time::Instant::now());
+            }
+
+            ls(&args, &config);
+        }
+    }
+
+    if let Some(t) = t {
+        println!("done in {:.2?}", t.elapsed());
+    }
+}
+
+fn ls(args: &Args, config: &Config) {
     let mut flags = HashMap::new();
 
     for v in Config::VARIABLES {
@@ -144,7 +197,7 @@ fn main() {
 
             #[cfg(windows)]
             {
-                context.insert("nlink", Value::Int(1)); // Windows does not support nlink
+                context.insert("nlink", Value::Int(1));
             }
         }
 
@@ -163,8 +216,16 @@ fn main() {
 
     println!("total: {}", table.rows().len());
     println!("{}", table);
+}
 
-    if let Some(t) = t {
-        println!("done in {:.2?}", t.elapsed());
+fn find(args: &FindArgs, _config: &Config) {
+    let walker = DirWalk::new(&args.path)
+        .skip_hidden(!args.all)
+        .max_depth(args.depth);
+
+    for (entry, _) in walker {
+        if entry.file_name().eq_ignore_ascii_case(&args.name) {
+            println!("{}", entry.path().display());
+        }
     }
 }

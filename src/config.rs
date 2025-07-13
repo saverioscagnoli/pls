@@ -19,7 +19,7 @@ pub struct LsConfig {
 impl Default for LsConfig {
     fn default() -> Self {
         Self {
-            padding: 2,
+            padding: 3,
             headers: vec![],
             templates: vec![
                 s!("{ :depth}{name}"),
