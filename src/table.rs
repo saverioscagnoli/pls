@@ -19,6 +19,32 @@ impl<T: Display> Table<T> {
         }
     }
 
+    pub fn add_headers<R: Into<Vec<T>>>(&mut self, headers: R)
+    where
+        T: From<String>,
+    {
+        let headers: Vec<(T, Alignment)> = headers
+            .into()
+            .into_iter()
+            .map(|h| {
+                let mut h_str = h.to_string();
+                let last = h_str.chars().last().unwrap_or(' ');
+                let alignment = Alignment::from_char(last);
+
+                if alignment.is_some() {
+                    // Remove the last character if it was used for alignment
+                    h_str = h_str[..h_str.len() - 1].to_string();
+                }
+
+                (T::from(h_str), alignment.unwrap_or_default())
+            })
+            .collect();
+
+        if !headers.is_empty() {
+            self.rows.insert(0, headers);
+        }
+    }
+
     pub fn add_row<R: Into<Vec<(T, Alignment)>>>(&mut self, row: R) {
         let row: Vec<(T, Alignment)> = row.into();
 

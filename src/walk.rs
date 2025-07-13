@@ -3,6 +3,14 @@ use std::{
     path::{Path, PathBuf},
 };
 
+pub enum FileKind {
+    Directory,
+    File,
+    Executable,
+    Symlink,
+    Unknown,
+}
+
 pub struct WalkOptions {
     skip_hidden: bool,
     max_depth: usize,

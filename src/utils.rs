@@ -22,3 +22,8 @@ pub fn display_permissions(meta: &Metadata) -> String {
 
     result
 }
+
+pub fn is_executable(meta: &Metadata) -> bool {
+    let mode = meta.permissions().mode();
+    mode & 0o111 != 0 // Check if any execute bit is set
+}
