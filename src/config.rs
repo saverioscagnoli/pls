@@ -22,7 +22,7 @@ impl Default for LsConfig {
             padding: 3,
             headers: vec![],
             templates: vec![
-                s!("{ :depth}{name}"),
+                s!("{ :depth}{[type](directory:󰉋)(file:󰈔)(symlink:󱅷)} {name}"),
                 s!("{permissions^}"),
                 s!("{size>} b"),
                 s!("{last_modified^}"),

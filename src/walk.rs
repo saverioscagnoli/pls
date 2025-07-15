@@ -1,11 +1,15 @@
+use rayon::iter::{IntoParallelIterator, ParallelBridge, ParallelIterator};
 use std::{
     fs::{self, ReadDir},
     path::{Path, PathBuf},
+    sync::mpsc::{self, Receiver, Sender},
 };
 
+#[derive(Debug, Clone)]
 pub struct WalkOptions {
     skip_hidden: bool,
     max_depth: usize,
+    follow_symlinks: bool,
 }
 
 impl Default for WalkOptions {
@@ -13,6 +17,7 @@ impl Default for WalkOptions {
         Self {
             skip_hidden: true,
             max_depth: usize::MAX,
+            follow_symlinks: false,
         }
     }
 }
@@ -68,7 +73,7 @@ impl Iterator for DirWalk {
 
                     if let Ok(ft) = entry.file_type() {
                         if ft.is_symlink() {
-                            continue;
+                            return Some((entry, depth));
                         }
 
                         if ft.is_dir()
@@ -87,24 +92,117 @@ impl Iterator for DirWalk {
     }
 }
 
-// fn next(&mut self) -> Option<Self::Item> {
-//     while let Some((mut dir, depth)) = self.stack.pop() {
-//         if let Some(entry) = dir.next() {
-//             // Put the directory back on the stack since it might have more entries
-//             self.stack.push((dir, depth));
+pub struct ThreadedWalk {
+    rx: Option<Receiver<(PathBuf, usize)>>,
+    path: PathBuf,
+    options: WalkOptions,
+    started: bool,
+}
 
-//             if let Ok(entry) = entry {
-//                 let path = entry.path();
-//                 if path.is_dir() {
-//                     if let Ok(sub_dir) = std::fs::read_dir(&path) {
-//                         self.stack.push((sub_dir, depth + 1));
-//                     }
-//                 }
-//                 return Some((path, depth));
-//             }
-//         }
-//         // If current_dir.next() returned None, the directory is exhausted
-//         // and we don't put it back on the stack
-//     }
-//     None
-// }
+impl ThreadedWalk {
+    pub fn new<P: AsRef<Path>>(path: P) -> Self {
+        ThreadedWalk {
+            rx: None,
+            path: path.as_ref().to_path_buf(),
+            options: WalkOptions::default(),
+            started: false,
+        }
+    }
+
+    pub fn skip_hidden(mut self, skip: bool) -> Self {
+        self.options.skip_hidden = skip;
+        self
+    }
+
+    pub fn max_depth(mut self, depth: usize) -> Self {
+        self.options.max_depth = depth;
+        self
+    }
+
+    fn start(&mut self) {
+        if self.started {
+            return;
+        }
+
+        let (tx, rx) = mpsc::channel();
+        let path = self.path.clone();
+        let options = self.options.clone();
+
+        rayon::spawn(move || {
+            Self::walk(path, &tx, false, &options, 1);
+        });
+
+        self.rx = Some(rx);
+        self.started = true;
+    }
+
+    fn walk(
+        path: PathBuf,
+        tx: &Sender<(PathBuf, usize)>,
+        is_file: bool,
+        options: &WalkOptions,
+        depth: usize,
+    ) {
+        // Check if the maximum depth has been reached
+        if depth > options.max_depth {
+            return;
+        }
+
+        // Duplicate the sender.send function
+        // to avoid cloning the path, which can improve performance
+        if is_file {
+            // If this is a file, just send the path and return
+            let _ = tx.send((path, depth));
+            return;
+        }
+
+        let Ok(entries) = std::fs::read_dir(&path) else {
+            let _ = tx.send((path, depth));
+            return;
+        };
+
+        // If this point is reached, it means we are processing a directory
+        // Send the directory path and depth
+        let _ = tx.send((path, depth));
+
+        // Separate into files and directories
+        entries
+            .par_bridge()
+            .into_par_iter()
+            .filter_map(|e| e.ok())
+            .for_each(|entry| {
+                if let Some(name) = entry.file_name().to_str() {
+                    if name.starts_with('.') && options.skip_hidden {
+                        return;
+                    }
+                }
+
+                let path = entry.path();
+
+                match entry.file_type() {
+                    Ok(ft) if ft.is_dir() => {
+                        if options.follow_symlinks || !ft.is_symlink() {
+                            // If it's a directory, recursively walk it
+                            Self::walk(path, tx, false, options, depth + 1);
+                        }
+                    }
+
+                    Ok(ft) if ft.is_file() => {
+                        // If it's a file, send the path
+                        let _ = tx.send((path, depth));
+                    }
+
+                    _ => {}
+                }
+            });
+    }
+}
+
+impl Iterator for ThreadedWalk {
+    type Item = (PathBuf, usize);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.start();
+        self.rx.as_ref().and_then(|rx| rx.recv().ok())
+    }
+}

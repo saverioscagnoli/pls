@@ -3,7 +3,11 @@ mod table;
 mod utils;
 mod walk;
 
-use crate::{config::Config, table::Table, walk::DirWalk};
+use crate::{
+    config::Config,
+    table::Table,
+    walk::{DirWalk, ThreadedWalk},
+};
 use chrono::{DateTime, Local};
 use clap::Parser;
 use figura::{Template, Value};
@@ -126,7 +130,7 @@ fn ls(args: &Args, config: &Config) {
         row.clear();
 
         let Ok(meta) = entry.metadata() else {
-            continue;
+            continue
         };
 
         if flags["name"] {
@@ -219,13 +223,16 @@ fn ls(args: &Args, config: &Config) {
 }
 
 fn find(args: &FindArgs, _config: &Config) {
-    let walker = DirWalk::new(&args.path)
+    let walker = ThreadedWalk::new(&args.path)
         .skip_hidden(!args.all)
         .max_depth(args.depth);
 
-    for (entry, _) in walker {
-        if entry.file_name().eq_ignore_ascii_case(&args.name) {
-            println!("{}", entry.path().display());
+    for (path, _) in walker {
+        if path
+            .file_name()
+            .map_or(false, |f| f.to_string_lossy().contains(&args.name))
+        {
+            println!("{}", path.display());
         }
     }
 }
