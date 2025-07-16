@@ -18,7 +18,6 @@ impl Default for LsConfig {
         Self {
             padding: 3,
             headers: vec![],
-            // ...existing code...
             templates: vec![
                 s!(
                     "{ :depth}{[type](directory:\x1b[34m󰉋\x1b[0m)(executable:\x1b[32m󰈔\x1b[0m)(file:󰈔)(symlink:\x1b[33m󱅷\x1b[0m)} {[type](directory:\x1b[1;34m)(executable:\x1b[1;32m)(file:)(symlink:\x1b[1;33m)}{[type](directory:name)(executable:name)(file:name)(symlink:name)}{[type](directory:\x1b[0m)(executable:\x1b[0m)(file:)(symlink:\x1b[0m)}"
@@ -28,7 +27,6 @@ impl Default for LsConfig {
                 s!("\x1b[90m{last_modified^}\x1b[0m"),
                 s!("\x1b[33m󱞩 {nlink>}\x1b[0m"),
             ],
-            // ...existing code...
             time_format: "%d/%m %H:%M".to_string(),
         }
     }
