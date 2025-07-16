@@ -12,7 +12,7 @@ use chrono::{DateTime, Local};
 use clap::Parser;
 use figura::{Template, Value};
 use smacro::map;
-use std::{collections::HashMap, path::PathBuf, usize};
+use std::{cmp::Ordering, collections::HashMap, path::PathBuf, usize};
 
 #[derive(Debug, Clone, Parser)]
 struct FindArgs {
@@ -116,7 +116,18 @@ fn ls(args: &Args, config: &Config) {
 
     let walker = DirWalk::new(&args.path)
         .skip_hidden(!args.all)
-        .max_depth(args.depth);
+        .max_depth(args.depth)
+        .sort_by(|a, b| {
+            // Sort directories first, then files, then symlinks
+            let a_is_dir = a.file_type().map(|ft| ft.is_dir()).unwrap_or(false);
+            let b_is_dir = b.file_type().map(|ft| ft.is_dir()).unwrap_or(false);
+
+            match (a_is_dir, b_is_dir) {
+                (true, false) => Ordering::Less,
+                (false, true) => Ordering::Greater,
+                _ => a.file_name().cmp(&b.file_name()),
+            }
+        });
 
     let mut table = Table::new().padding(config.ls.padding);
 
@@ -129,9 +140,7 @@ fn ls(args: &Args, config: &Config) {
         context.clear();
         row.clear();
 
-        let Ok(meta) = entry.metadata() else {
-            continue
-        };
+        let Ok(meta) = entry.metadata() else { continue };
 
         if flags["name"] {
             let file_name = entry.file_name();

@@ -1,18 +1,15 @@
-use std::path::PathBuf;
-
 use serde::Deserialize;
 use serde_inline_default::serde_inline_default;
 use smacro::s;
+use std::path::PathBuf;
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde_inline_default]
 #[serde(default)]
 pub struct LsConfig {
     pub padding: usize,
-
     pub headers: Vec<String>,
     pub templates: Vec<String>,
-
     pub time_format: String,
 }
 
@@ -21,21 +18,21 @@ impl Default for LsConfig {
         Self {
             padding: 3,
             headers: vec![],
+            // ...existing code...
             templates: vec![
-                s!("{ :depth}{[type](directory:󰉋)(file:󰈔)(symlink:󱅷)} {name}"),
-                s!("{permissions^}"),
+                s!(
+                    "{ :depth}{[type](directory:\x1b[34m󰉋\x1b[0m)(executable:\x1b[32m󰈔\x1b[0m)(file:󰈔)(symlink:\x1b[33m󱅷\x1b[0m)} {[type](directory:\x1b[1;34m)(executable:\x1b[1;32m)(file:)(symlink:\x1b[1;33m)}{[type](directory:name)(executable:name)(file:name)(symlink:name)}{[type](directory:\x1b[0m)(executable:\x1b[0m)(file:)(symlink:\x1b[0m)}"
+                ),
+                s!("\x1b[90m{permissions^}\x1b[0m"),
                 s!("{size>} b"),
-                s!("{last_modified^}"),
-                s!("{nlink>} ->"),
+                s!("\x1b[90m{last_modified^}\x1b[0m"),
+                s!("\x1b[33m󱞩 {nlink>}\x1b[0m"),
             ],
-
-            // American date format sucks
-            // this is way better
+            // ...existing code...
             time_format: "%d/%m %H:%M".to_string(),
         }
     }
 }
-
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
     #[serde(default)]
