@@ -16,18 +16,24 @@ use std::{cmp::Ordering, collections::HashMap, path::PathBuf, usize};
 
 #[derive(Debug, Clone, Parser)]
 struct FindArgs {
+    /// The name of the file to find
     #[arg(index = 1)]
     name: String,
 
+    /// The path to start searching from
     #[arg(index = 2, default_value = ".")]
     path: PathBuf,
 
+    /// Whether to include hidden files
     #[arg(short, long, default_value = "false")]
     all: bool,
 
+    /// Max depth to search
     #[arg(short, long, default_value = "18446744073709551615")]
     depth: usize,
 
+    /// Whether to time the operation
+    /// Will print the time taken to complete the operation
     #[arg(short, long, default_value = "false")]
     timed: bool,
 }
@@ -48,18 +54,24 @@ enum Command {
 
 #[derive(Debug, Clone, Parser)]
 struct Args {
+    /// The path to list
     #[arg(index = 1, default_value = ".")]
     path: PathBuf,
 
+    /// Max depth to list
     #[arg(short, long, default_value = "1")]
     depth: usize,
 
+    /// Whether to include hidden files
     #[arg(short, long, default_value = "false")]
     all: bool,
 
+    /// Whether to time the operation
+    /// Will print the time taken to complete the operation
     #[arg(short, long, default_value = "false")]
     timed: bool,
 
+    /// Subcommands for the CLI
     #[clap(subcommand)]
     command: Option<Command>,
 }

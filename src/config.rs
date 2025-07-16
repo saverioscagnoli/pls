@@ -7,9 +7,36 @@ use std::path::PathBuf;
 #[serde_inline_default]
 #[serde(default)]
 pub struct LsConfig {
+    /// Padding between columns
+    /// Default: 3
+    /// This is used to align the columns in the output
     pub padding: usize,
+
+    /// Headers for the output
+    /// These are used to display the column names in the output
+    /// Default: []
     pub headers: Vec<String>,
+
+    /// Actual output
+    /// Variables are used to display the file information
+    /// Possible variables:
+    /// - name: The name of the file
+    /// - type: The type of the file (directory, executable, file, symlink)
+    /// - depth: The depth of the file in the directory tree
+    /// - permissions: The permissions of the file
+    /// - size: The size of the file in bytes
+    /// - last_modified: The last modified time of the file
+    /// - nlink: The number of hard links to the file
+    /// 
+    /// See https://crates.io/crates/figura for more information on the syntax
+    /// when using the templates.
+    /// 
+    /// Supports conditional formatting based on a variable, pattern repeating, etc.
     pub templates: Vec<String>,
+
+    /// Time format for the last modified time
+    /// Default: "%d/%m %H:%M"
+    /// See chrono::format::strftime for more information on the format
     pub time_format: String,
 }
 
