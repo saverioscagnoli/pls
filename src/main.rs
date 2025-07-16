@@ -1,189 +1,247 @@
-mod bytes;
 mod config;
-mod dir;
-mod error;
-mod git;
 mod table;
 mod utils;
 mod walk;
 
 use crate::{
     config::Config,
-    dir::{DetailedEntry, FileKind},
-    git::GitCache,
     table::Table,
-    walk::{SyncWalk, ThreadedWalk},
+    walk::{DirWalk, ThreadedWalk},
 };
+use chrono::{DateTime, Local};
+use clap::Parser;
+use figura::{Template, Value};
+use smacro::map;
+use std::{cmp::Ordering, collections::HashMap, path::PathBuf, usize};
 
-use clap::{Parser, Subcommand};
-use figura::{DefaultParser, Template, Value};
-use std::{cmp::Ordering, collections::HashMap, path::PathBuf, time::Instant};
+#[derive(Debug, Clone, Parser)]
+struct FindArgs {
+    #[arg(index = 1)]
+    name: String,
 
-#[derive(Debug, Subcommand)]
-pub enum Command {
-    /// This is the default command, it will trigger if no subcommand is provided.
-    /// Its args are defined in `Args`.
-    List,
-
-    /// Finds a file or directory by name.
-    Find {
-        /// The name of the file or directory to search for.
-        #[clap(index = 1)]
-        name: String,
-
-        /// The root path to start the search from.
-        /// Defaults to the current directory.
-        #[clap(default_value = ".", index = 2)]
-        path: PathBuf,
-
-        /// Show all files, including hidden ones.
-        /// Defaults to `false`.
-        #[clap(short, long, default_value = "false")]
-        all: bool,
-    },
-}
-
-#[derive(Debug, Parser)]
-struct Args {
-    /// Path to walk
-    #[clap(default_value = ".", index = 1)]
+    #[arg(index = 2, default_value = ".")]
     path: PathBuf,
 
-    // The maximum depth to walk
-    #[clap(short, long, default_value = "1")]
-    depth: usize,
-
-    /// Show all files, including hidden ones
-    #[clap(short, long, default_value = "false")]
+    #[arg(short, long, default_value = "false")]
     all: bool,
 
-    /// The command to run
-    /// If not provided, the default command is `List`.
+    #[arg(short, long, default_value = "18446744073709551615")]
+    depth: usize,
+
+    #[arg(short, long, default_value = "false")]
+    timed: bool,
+}
+
+#[derive(Debug, Clone, Parser)]
+enum Command {
+    Find {
+        #[clap(flatten)]
+        args: FindArgs,
+    },
+
+    /// Used only for comodity (unwrap or when matching),
+    /// since this is the deafult command,
+    /// but clap doesnt allow unnamed commands,
+    /// so the args for this are in the `Args` struct
+    Ls,
+}
+
+#[derive(Debug, Clone, Parser)]
+struct Args {
+    #[arg(index = 1, default_value = ".")]
+    path: PathBuf,
+
+    #[arg(short, long, default_value = "1")]
+    depth: usize,
+
+    #[arg(short, long, default_value = "false")]
+    all: bool,
+
+    #[arg(short, long, default_value = "false")]
+    timed: bool,
+
     #[clap(subcommand)]
     command: Option<Command>,
 }
 
-type Walker<T> = Box<dyn Iterator<Item = T>>;
-
 fn main() {
     let args = Args::parse();
+    let mut t = None;
+
     let config = Config::parse();
 
-    match args.command {
-        Some(Command::Find { name, path, all }) => find(name, path, all, &config),
-        _ => {
-            // If the user sets the max depth to >= 3, it makes more sense to use a multithreaded walker
-            // to speed up the process
-            // If not, use a single-threaded walker
-            let walker: Box<dyn Iterator<Item = (DetailedEntry, usize)>> = match args.depth {
-                d if d < 3 => Box::new(
-                    SyncWalk::new(&args.path)
-                        .skip_hidden(!args.all)
-                        .max_depth(args.depth)
-                        .sort_by(|a, b| {
-                            let is_dir_a = a.file_type().map_or(false, |t| t.is_dir());
-                            let is_dir_b = b.file_type().map_or(false, |t| t.is_dir());
+    match args.command.as_ref().unwrap_or(&Command::Ls) {
+        Command::Find { args } => {
+            if args.timed {
+                t = Some(std::time::Instant::now());
+            }
 
-                            match (is_dir_a, is_dir_b) {
-                                (true, false) => Ordering::Less,
-                                (false, true) => Ordering::Greater,
-                                _ => a.file_name().cmp(&b.file_name()),
-                            }
-                        })
-                        .map(|(entry, path)| {
-                            let detailed_entry = DetailedEntry::from(entry);
-                            (detailed_entry, path)
-                        }),
-                ),
-
-                _ => Box::new(
-                    ThreadedWalk::new(&args.path)
-                        .skip_hidden(!args.all)
-                        .max_depth(args.depth)
-                        .map(|(path, depth)| {
-                            let detailed_entry = DetailedEntry::from(path.as_path());
-                            (detailed_entry, depth)
-                        }),
-                ),
-            };
-
-            ls(&args, &config, walker);
+            find(args, &config);
         }
+        Command::Ls => {
+            if args.timed {
+                t = Some(std::time::Instant::now());
+            }
+
+            ls(&args, &config);
+        }
+    }
+
+    if let Some(t) = t {
+        println!("done in {:.2?}", t.elapsed());
     }
 }
 
-/// This is the command that lists the files and directories.
-/// It's the default behavior if no subcommand is provided
-fn ls(args: &Args, conf: &Config, walker: Walker<(DetailedEntry, usize)>) {
-    // Table for pretty printing the output
-    let mut table: Table<String> = Table::new().padding(conf.ls.padding);
+fn ls(args: &Args, config: &Config) {
+    let mut flags = HashMap::new();
 
-    // If `args.path` is not a git repository, the default git cache will be empty.
-    // see `GitCache::new`
-    let git_cache = GitCache::new(&args.path).unwrap_or_default();
+    for v in Config::VARIABLES {
+        flags.insert(v, false);
+    }
 
-    let templates = conf
+    for t in &config.ls.templates {
+        for v in Config::VARIABLES {
+            if t.contains(v) {
+                flags.insert(v, true);
+            }
+        }
+    }
+
+    let templates = config
         .ls
-        .format
+        .templates
         .iter()
-        .map(|t| Template::<'{', '}'>::parse(&t))
-        .filter_map(Result::ok)
+        .filter_map(|t| Template::<'{', '}'>::parse(t).ok())
         .collect::<Vec<_>>();
 
+    let walker = DirWalk::new(&args.path)
+        .skip_hidden(!args.all)
+        .max_depth(args.depth)
+        .sort_by(|a, b| {
+            // Sort directories first, then files, then symlinks
+            let a_is_dir = a.file_type().map(|ft| ft.is_dir()).unwrap_or(false);
+            let b_is_dir = b.file_type().map(|ft| ft.is_dir()).unwrap_or(false);
+
+            match (a_is_dir, b_is_dir) {
+                (true, false) => Ordering::Less,
+                (false, true) => Ordering::Greater,
+                _ => a.file_name().cmp(&b.file_name()),
+            }
+        });
+
+    let mut table = Table::new().padding(config.ls.padding);
+
+    table.add_headers(config.ls.headers.as_slice());
+
+    let mut context = map![];
+    let mut row = Vec::new();
+
     for (entry, depth) in walker {
-        let mut row = Vec::new();
-        let mut context = HashMap::new();
+        context.clear();
+        row.clear();
 
-        let name = entry.name();
-        let ext = entry.ext().unwrap_or("");
+        let Ok(meta) = entry.metadata() else { continue };
 
-        let icon = match entry.kind() {
-            FileKind::Directory => conf.indicators.dir(&name),
-            FileKind::File => conf.indicators.file(&ext),
-            _ => conf.indicators.unknown(),
-        };
+        if flags["name"] {
+            let file_name = entry.file_name();
+            let name = file_name.to_string_lossy();
 
-        context.insert("depth", Value::Int(depth as i64 - 1));
-        context.insert("icon", Value::String(icon));
-        context.insert("name", Value::String(entry.name().to_string()));
-        context.insert(
-            "permissions",
-            Value::String(entry.permissions().to_string()),
-        );
-
-        for t in &templates {
-            match t.format(&context) {
-                Ok(v) => row.push((v, t.alignment())),
-                Err(e) => eprintln!("{}", e),
+            if args.all {
+                if name.starts_with('.') {
+                    context.insert("name", Value::String(name.into_owned()));
+                } else {
+                    context.insert("name", Value::String(format!(" {}", name.into_owned())));
+                }
+            } else {
+                context.insert("name", Value::String(name.into_owned()));
             }
         }
 
-        // Skip empty rows
-        if row.is_empty() {
-            continue;
+        if flags["type"] {
+            let ft = meta.file_type();
+
+            if ft.is_dir() {
+                context.insert("type", Value::String("directory".into()));
+            } else if ft.is_file() {
+                if utils::is_executable(&meta) {
+                    context.insert("type", Value::String("executable".into()));
+                } else {
+                    context.insert("type", Value::String("file".into()));
+                }
+            } else if ft.is_symlink() {
+                context.insert("type", Value::String("symlink".into()));
+            } else {
+                context.insert("type", Value::String("unknown".into()));
+            }
         }
 
-        table.add_row(row);
+        if flags["depth"] {
+            context.insert("depth", Value::Int(depth as i64 - 1));
+        }
+
+        if flags["permissions"] {
+            context.insert(
+                "permissions",
+                Value::String(utils::display_permissions(&meta)),
+            );
+        }
+
+        if flags["size"] {
+            context.insert("size", Value::Int(meta.len() as i64));
+        }
+
+        if flags["last_modified"] {
+            if let Ok(m) = meta.modified() {
+                let local = DateTime::<Local>::from(m);
+                let formatted = local.format(&config.ls.time_format).to_string();
+
+                context.insert("last_modified", Value::String(formatted));
+            } else {
+                context.insert("last_modified", Value::String("unknown".into()));
+            }
+        }
+
+        if flags["nlink"] {
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::MetadataExt;
+                context.insert("nlink", Value::Int(meta.nlink() as i64));
+            }
+
+            #[cfg(windows)]
+            {
+                context.insert("nlink", Value::Int(1));
+            }
+        }
+
+        for t in &templates {
+            match t.format(&context) {
+                Ok(f) => row.push((f, t.alignment())),
+                Err(e) => {
+                    eprintln!("Error formatting template: {}", e);
+                    continue;
+                }
+            }
+        }
+
+        table.add_row(row.as_slice());
     }
 
     println!("total: {}", table.rows().len());
     println!("{}", table);
 }
 
-fn find(name: String, path: PathBuf, all: bool, _conf: &Config) {
-    let t0 = Instant::now();
-    let mut c = 0;
+fn find(args: &FindArgs, _config: &Config) {
+    let walker = ThreadedWalk::new(&args.path)
+        .skip_hidden(!args.all)
+        .max_depth(args.depth);
 
-    for (path, _) in ThreadedWalk::new(&path).skip_hidden(!all) {
+    for (path, _) in walker {
         if path
             .file_name()
-            .map(|os_str| os_str.to_string_lossy() == name)
-            .unwrap_or(false)
+            .map_or(false, |f| f.to_string_lossy().contains(&args.name))
         {
-            c += 1;
-            println!("{}", path.as_path().display());
+            println!("{}", path.display());
         }
     }
-
-    println!("Found {} entries in {:?}", c, t0.elapsed());
 }

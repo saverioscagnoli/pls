@@ -1,5 +1,4 @@
 use rayon::iter::{IntoParallelIterator, ParallelBridge, ParallelIterator};
-use serde::de;
 use std::{
     cmp::Ordering,
     fs::{DirEntry, ReadDir},
@@ -33,12 +32,12 @@ enum StackItem {
 }
 
 #[derive(Debug)]
-pub struct SyncWalk {
+pub struct DirWalk {
     stack: Vec<StackItem>,
     options: WalkOptions,
 }
 
-impl SyncWalk {
+impl DirWalk {
     pub fn new<P: AsRef<Path>>(path: P) -> Self {
         let rd = std::fs::read_dir(&path).expect("Root directory should be valid");
         Self {
@@ -57,18 +56,13 @@ impl SyncWalk {
         self
     }
 
-    pub fn follow_symlinks(mut self, follow: bool) -> Self {
-        self.options.follow_symlinks = follow;
-        self
-    }
-
     pub fn sort_by(mut self, sort_fn: fn(&DirEntry, &DirEntry) -> Ordering) -> Self {
         self.options.sort_by = Some(sort_fn);
         self
     }
 }
 
-impl Iterator for SyncWalk {
+impl Iterator for DirWalk {
     type Item = (DirEntry, usize);
 
     fn next(&mut self) -> Option<Self::Item> {
