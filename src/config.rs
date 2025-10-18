@@ -1,109 +1,128 @@
+use std::{collections::HashSet, str::FromStr};
 use serde::Deserialize;
-use serde_inline_default::serde_inline_default;
-use smacro::s;
-use std::path::PathBuf;
+use crate::{err::PlsError, util};
 
-#[derive(Debug, Clone, Deserialize)]
-#[serde_inline_default]
-#[serde(default)]
-pub struct LsConfig {
-    /// Padding between columns
-    /// Default: 3
-    /// This is used to align the columns in the output
-    pub padding: usize,
-
-    /// Headers for the output
-    /// These are used to display the column names in the output
-    /// Default: []
-    pub headers: Vec<String>,
-
-    /// Actual output
-    /// Variables are used to display the file information
-    /// Possible variables:
-    /// - name: The name of the file
-    /// - type: The type of the file (directory, executable, file, symlink)
-    /// - depth: The depth of the file in the directory tree
-    /// - permissions: The permissions of the file
-    /// - size: The size of the file in bytes
-    /// - last_modified: The last modified time of the file
-    /// - nlink: The number of hard links to the file
-    /// 
-    /// See https://crates.io/crates/figura for more information on the syntax
-    /// when using the templates.
-    /// 
-    /// Supports conditional formatting based on a variable, pattern repeating, etc.
-    pub templates: Vec<String>,
-
-    /// Time format for the last modified time
-    /// Default: "%d/%m %H:%M"
-    /// See chrono::format::strftime for more information on the format
-    pub time_format: String,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ListVariable {
+    Name,
+    Path,
+    Size,
+    Permissions,
+    Created,
+    Modified,
+    Accessed,
 }
 
-impl Default for LsConfig {
-    fn default() -> Self {
-        Self {
-            padding: 3,
-            headers: vec![],
-            templates: vec![
-                s!(
-                    "{ :depth}{[type](directory:\x1b[34m󰉋\x1b[0m)(executable:\x1b[32m󰈔\x1b[0m)(file:󰈔)(symlink:\x1b[33m󱅷\x1b[0m)} {[type](directory:\x1b[1;34m)(executable:\x1b[1;32m)(file:)(symlink:\x1b[1;33m)}{[type](directory:name)(executable:name)(file:name)(symlink:name)}{[type](directory:\x1b[0m)(executable:\x1b[0m)(file:)(symlink:\x1b[0m)}"
-                ),
-                s!("\x1b[90m{permissions^}\x1b[0m"),
-                s!("{size>} b"),
-                s!("\x1b[90m{last_modified^}\x1b[0m"),
-                s!("\x1b[33m󱞩 {nlink>}\x1b[0m"),
-            ],
-            time_format: "%d/%m %H:%M".to_string(),
+impl FromStr for ListVariable {
+    type Err = ();
+
+    fn from_str(input: &str) -> Result<ListVariable, Self::Err> {
+        match input {
+            "name" => Ok(ListVariable::Name),
+            "path" => Ok(ListVariable::Path),
+            "size" => Ok(ListVariable::Size),
+            "permissions" => Ok(ListVariable::Permissions),
+            "created" => Ok(ListVariable::Created),
+            "modified" => Ok(ListVariable::Modified),
+            "accessed" => Ok(ListVariable::Accessed),
+            _ => Err(()),
         }
     }
 }
+
 #[derive(Debug, Clone, Deserialize)]
+pub struct ListConfig {
+    #[serde(default = "ListConfig::default_format")]
+    pub format: Vec<String>,
+}
+
+impl Default for ListConfig {
+    fn default() -> Self {
+        Self {
+            format: Self::default_format(),
+        }
+    }
+}
+
+impl ListConfig {
+    pub fn default_format() -> Vec<String> {
+        vec![
+            String::from("{name}"),
+            String::from("{size}"),
+            String::from("{modified}"),
+        ]
+    }
+
+    pub fn list_variables(&self) -> Vec<ListVariable> {
+        let mut stripped = String::new();
+
+        for t in &self.format {
+            stripped.push_str(util::keep_ascii_letters_and_whitespace(t).as_str());
+            stripped.push(' ');
+        }
+
+        stripped
+            .split_whitespace()
+            .filter_map(|var| ListVariable::from_str(var).ok())
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect()
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
 pub struct Config {
-    #[serde(default)]
-    pub ls: LsConfig,
+    pub ls: ListConfig,
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
-            ls: LsConfig::default(),
+            ls: ListConfig::default(),
         }
     }
 }
 
 impl Config {
-    pub const VARIABLES: [&'static str; 7] = [
-        "name",
-        "type",
-        "depth",
-        "permissions",
-        "size",
-        "last_modified",
-        "nlink",
-    ];
+    pub fn parse() -> Result<Self, PlsError> {
+        let config_dir = dirs::config_dir()
+            .ok_or_else(|| PlsError::ConfigNotFound)?
+            .join("pls");
 
-    /// Returns the path to the configuration file.
-    /// /home/<user>/.config/pls/config.json
-    fn path() -> Option<PathBuf> {
-        dirs::config_dir().map(|p| p.join("pls").join("config.json"))
-    }
+        let possble_paths = &[
+            config_dir.join("config.toml"),
+            config_dir.join("config.json"),
+            config_dir.join("config.jsonc"),
+            config_dir.join("config.json5"),
+            config_dir.join("config.yaml"),
+        ];
 
-    pub fn parse() -> Self {
-        let Some(path) = Config::path() else {
-            return Config::default();
-        };
+        let path = possble_paths
+            .iter()
+            .find(|p| p.exists())
+            .ok_or_else(|| PlsError::ConfigNotFound)?;
 
-        let Ok(str) = std::fs::read_to_string(&path) else {
-            return Config::default();
-        };
+        let content = std::fs::read_to_string(path)?;
+        let config: Config =
+            match path.extension().and_then(|s| s.to_str()) {
+                Some("toml") => {
+                    toml::from_str(&content).map_err(|e| PlsError::ParsingError(e.to_string()))?
+                }
 
-        match serde_json::from_str(&str) {
-            Ok(c) => c,
-            Err(e) => {
-                eprintln!("Failed to deserialize config: {}", e);
-                Config::default()
-            }
-        }
+                Some("json") => serde_json::from_str(&content)
+                    .map_err(|e| PlsError::ParsingError(e.to_string()))?,
+
+                Some("jsonc") | Some("json5") => {
+                    json5::from_str(&content).map_err(|e| PlsError::ParsingError(e.to_string()))?
+                }
+
+                Some("yaml") | Some("yml") => serde_yaml::from_str(&content)
+                    .map_err(|e| PlsError::ParsingError(e.to_string()))?,
+
+                _ => return Err(PlsError::ConfigNotFound),
+            };
+
+        Ok(config)
     }
 }

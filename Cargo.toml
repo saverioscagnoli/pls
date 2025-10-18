@@ -6,13 +6,18 @@ edition = "2024"
 [dependencies]
 chrono = "0.4.41"
 clap = { version = "4.5.40", features = ["derive"] }
+devicons = "0.6.12"
 dirs = "6.0.0"
-figura = "1.0.2"
+figura = "1.3.2"
+json5 = "0.4.1"
 jwalk = "0.8.1"
 rayon = "1.10.0"
 serde = { version = "1.0.219", features = ["derive"] }
 serde-inline-default = "0.2.3"
 serde_json = "1.0.140"
+serde_yaml = "0.9.34"
 smacro = { version = "0.1.0", features = ["map"] }
 strip-ansi-escapes = "0.2.1"
+thiserror = "2.0.17"
+toml = "0.9.8"
 unicode-width = "0.2.1"
