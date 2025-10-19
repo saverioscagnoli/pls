@@ -8,6 +8,9 @@ pub struct ListArgs {
 
     #[arg(short, long, default_value_t = false)]
     pub all: bool,
+
+    #[arg(short, long, default_value_t = 1)]
+    pub depth: usize,
 }
 
 #[derive(Debug, Clone, Parser)]

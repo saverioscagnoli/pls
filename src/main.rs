@@ -2,14 +2,13 @@ mod args;
 mod commands;
 mod config;
 mod err;
+mod table;
 mod util;
-
-use std::{collections::HashSet, f32::consts::E, path::PathBuf, str::FromStr, sync::LazyLock};
+mod walk;
 
 use crate::{
     args::{Args, Subcommand},
     config::Config,
-    err::PlsError,
 };
 use clap::Parser;
 
