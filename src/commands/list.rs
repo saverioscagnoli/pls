@@ -1,11 +1,11 @@
 use crate::args::ListArgs;
-use crate::config::{ListConfig, ListVariable};
+use crate::config::{ListConfig, ListVariable, SizeUnit};
 use crate::err::PlsError;
 use crate::table::Table;
 use crate::util;
 use crate::walk::DirWalk;
 use chrono::{DateTime, Local};
-use figura::Template;
+use figura::{Template, Value};
 use serde::Deserialize;
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -116,19 +116,150 @@ pub fn execute(args: &ListArgs, config: &ListConfig) -> Result<(), PlsError> {
             }
         })
     {
-        let name = entry.file_name();
-
-        let Some(name) = name.to_str() else {
-            writeln!(handle, "Skipping entry with faulty name")?;
-            continue;
-        };
+        let name = entry.file_name().to_string_lossy().to_string();
 
         if !args.all && name.starts_with('.') {
             continue;
         }
 
         let path = entry.path();
-        let ext = path.extension().and_then(|e| e.to_str());
+        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+        let (kind, metadata) = FileKind::from_path(&path);
+
+        for var in &used_variables {
+            match var {
+                ListVariable::Name => {
+                    context.insert("name", Value::String(name.to_string()));
+                }
+                ListVariable::Path => {
+                    context.insert("path", Value::String(path.to_string_lossy().to_string()));
+                }
+
+                ListVariable::Kind => {
+                    context.insert("kind", Value::String(kind.to_string()));
+                }
+
+                ListVariable::Size => {
+                    context.insert(
+                        "size",
+                        Value::String(config.size_unit.format_bytes(metadata.len())),
+                    );
+                }
+
+                ListVariable::Depth => {
+                    context.insert("depth", Value::Int(i as i64));
+                }
+
+                ListVariable::Icon => {
+                    let icon = match kind {
+                        FileKind::File => config
+                            .icons
+                            .extensions
+                            .get(ext)
+                            .unwrap_or(&config.icons.file),
+                        FileKind::Directory => &config.icons.directory,
+                        FileKind::SymlinkFile => &config.icons.symlink_file,
+                        FileKind::SymlinkDirectory => &config.icons.symlink_directory,
+                        FileKind::Executable => &config.icons.executable,
+                    };
+
+                    context.insert("icon", Value::String(icon.to_string()));
+                }
+
+                ListVariable::Permissions => {
+                    context.insert(
+                        "permissions",
+                        Value::String(util::permissions_to_string(metadata.mode())),
+                    );
+                }
+
+                ListVariable::Created => {
+                    if let Ok(ctime) = metadata.created() {
+                        let date = DateTime::<Local>::from(ctime)
+                            .format(&config.created_format)
+                            .to_string();
+
+                        context.insert("created", Value::String(date));
+                    } else {
+                        context.insert("created", Value::Str("N/A"));
+                    }
+                }
+
+                ListVariable::Modified => {
+                    if let Ok(mtime) = metadata.modified() {
+                        let date = DateTime::<Local>::from(mtime)
+                            .format(&config.modified_format)
+                            .to_string();
+
+                        context.insert("modified", Value::String(date));
+                    } else {
+                        context.insert("modified", Value::Str("N/A"));
+                    }
+                }
+
+                ListVariable::Accessed => {
+                    if let Ok(atime) = metadata.accessed() {
+                        let date = DateTime::<Local>::from(atime)
+                            .format(&config.accessed_format)
+                            .to_string();
+
+                        context.insert("accessed", Value::String(date));
+                    } else {
+                        context.insert("accessed", Value::Str("N/A"));
+                    }
+                }
+
+                ListVariable::Owner => {
+                    #[cfg(target_family = "unix")]
+                    {
+                        use users::get_user_by_uid;
+
+                        let uid = metadata.uid();
+
+                        if let Some(user) = get_user_by_uid(uid) {
+                            context.insert(
+                                "owner",
+                                Value::String(user.name().to_string_lossy().to_string()),
+                            );
+                        } else {
+                            context.insert("owner", Value::Str("N/A"));
+                        }
+                    }
+
+                    #[cfg(not(target_family = "unix"))]
+                    {
+                        context.insert("owner", Value::Str("N/A"));
+                    }
+                }
+
+                ListVariable::Group => {
+                    #[cfg(target_family = "unix")]
+                    {
+                        use users::get_group_by_gid;
+
+                        let gid = metadata.gid();
+
+                        if let Some(group) = get_group_by_gid(gid) {
+                            context.insert(
+                                "group",
+                                Value::String(group.name().to_string_lossy().to_string()),
+                            );
+                        } else {
+                            context.insert("group", Value::Str("N/A"));
+                        }
+                    }
+
+                    #[cfg(not(target_family = "unix"))]
+                    {
+                        context.insert("group", Value::Str("N/A"));
+                    }
+                }
+
+                ListVariable::NLink => {
+                    context.insert("nlink", Value::Int(metadata.nlink() as i64));
+                }
+            }
+        }
 
         for t in &templates {
             match t.format(&context) {

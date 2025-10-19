@@ -9,8 +9,8 @@ use std::{
 pub enum ListVariable {
     Name,
     Path,
-    Size,
     Kind,
+    Size,
     Depth,
     Icon,
     Permissions,
@@ -82,7 +82,7 @@ impl SizeUnit {
         }
     }
 
-    pub fn format_number(&self, bytes: u64) -> String {
+    pub fn format_bytes(&self, bytes: u64) -> String {
         match self {
             SizeUnit::Auto => SizeUnit::format_size_auto(bytes),
             SizeUnit::Bytes => format!("{} B", bytes),
@@ -268,44 +268,6 @@ pub struct ColorConfig {
 
     #[serde(default)]
     pub variables: HashMap<ListVariable, Color>,
-}
-
-impl ColorConfig {
-    pub fn get_color_for_entry(&self, kind: &FileKind, extension: Option<&str>) -> Option<Color> {
-        if !self.enabled {
-            return None;
-        }
-
-        // Check extension
-        if let Some(ext) = extension {
-            if let Some(color) = self.extensions.get(ext) {
-                return Some(color.clone());
-            }
-        }
-
-        // Check kind
-        if let Some(color) = self.kinds.get(&kind) {
-            return Some(color.clone());
-        }
-
-        Some(Color::Named(String::from("white")))
-    }
-
-    pub fn get_variable_color(&self, variable: ListVariable) -> Option<&Color> {
-        if !self.enabled {
-            return None;
-        }
-
-        self.variables.get(&variable)
-    }
-
-    pub fn colorize(&self, text: &str, color: &Color) -> String {
-        if !self.enabled {
-            return text.to_string();
-        }
-
-        format!("{}{}{}", color.to_ansi(), text, Color::reset())
-    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
