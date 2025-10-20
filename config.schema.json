@@ -1,0 +1,148 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "pls configuration schema",
+  "description": "schema for configuring pls",
+  "type": "object",
+  "properties": {
+    "ls": {
+      "type": "object",
+      "description": "configuration for the list command output",
+      "properties": {
+        "format": {
+          "type": "array",
+          "description": "array of template strings. it is what defines the output of the command",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "padding": {
+          "type": "number",
+          "description": "the spacing between colums, think of it as the space between the format array strings",
+          "minimum": 0
+        },
+        "style": {
+          "type": "object",
+          "description": "configuration for per-variable style",
+          "properties": {
+            "name": {
+              "$ref": "#/definition/variableStyle"
+            },
+            "path": {
+              "$ref": "#/definition/variableStyle"
+            },
+            "kind": {
+              "$ref": "#/definition/variableStyle"
+            },
+            "size": {
+              "$ref": "#/deifinition/variableStyle"
+            },
+            "icon": {
+              "$ref": "#/definition/variableStyle"
+            },
+            "permissions": {
+              "$ref": "#/definition/variableStyle"
+            },
+            "created": {
+              "$ref": "#/definition/variableStyle"
+            },
+            "modified": {
+              "$ref": "#/definition/variableStyle"
+            },
+            "accessed": {
+              "$ref": "#/definition/variableStyle"
+            },
+            "owner": {
+              "$ref": "#/definition/variableStyle"
+            },
+            "group": {
+              "$ref": "#/definition/variableStyle"
+            }
+          }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "color": {
+      "oneOf": [
+        {
+          "type": "string",
+          "description": "Color name or code",
+          "enum": [
+            "black",
+            "red",
+            "green",
+            "yellow",
+            "blue",
+            "magenta",
+            "cyan",
+            "white",
+            "gray",
+            "bright_black",
+            "bright_red",
+            "bright_green",
+            "bright_yellow",
+            "bright_blue",
+            "bright_magenta",
+            "bright_cyan",
+            "bright_white"
+          ]
+        },
+        {
+          "type": "integer",
+          "description": "ansi color code",
+          "minimum": 0,
+          "maximum": 255
+        },
+        {
+          "type": "array",
+          "description": "RGB color as [r, g, b]",
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255
+          },
+          "minItems": 3,
+          "maxItems": 3
+        }
+      ]
+    },
+    "text": {
+      "type": "string",
+      "enum": [
+        "bold",
+        "italic",
+        "underline",
+        "strikethrough",
+        "blink",
+        "inverse",
+        "conceal",
+        "crossed",
+        "overline",
+        "double_underline",
+        "double_strikethrough",
+        "double_blink",
+        "double_inverse",
+        "double_conceal",
+        "double_crossed",
+        "double_overline"
+      ]
+    }
+  },
+  "variableStyle": {
+    "type": "object",
+    "description": "Style for variables",
+    "properties": {
+      "foreground": {
+        "$ref": "#/definitions/color"
+      },
+      "background": {
+        "$ref": "#/definitions/color"
+      },
+      "text": {
+        "$ref": "#/definitions/text"
+      }
+    }
+  }
+}
