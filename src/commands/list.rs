@@ -127,22 +127,11 @@ pub fn execute(args: &ListArgs, config: &ListConfig) -> Result<(), PlsError> {
         let ext = path.extension().and_then(|e| e.to_str());
         let (kind, metadata) = FileKind::from_path(&path);
 
-        // Helper function to apply color to a value if configured
-        let apply_color = |var: &ListVariable, value: String| -> String {
-            if config.colors.enabled {
-                if let Some(var_config) = config.colors.variables.get(var) {
-                    let color = var_config.resolve_color(kind, ext);
-                    return color.colorize(&value);
-                }
-            }
-            value
-        };
-
         for var in &used_variables {
             match var {
                 ListVariable::Name => {
                     let value = name.to_string_lossy().to_string();
-                    let mut colored = apply_color(var, value);
+                    let mut colored = config.colors.apply_style(&kind, ext, var, value);
 
                     if args.all && !hidden {
                         colored.insert(0, ' ');
@@ -152,19 +141,20 @@ pub fn execute(args: &ListArgs, config: &ListConfig) -> Result<(), PlsError> {
                 }
                 ListVariable::Path => {
                     let value = path.to_string_lossy().to_string();
-                    let colored = apply_color(var, value);
+                    let colored = config.colors.apply_style(&kind, ext, var, value);
+
                     context.insert("path", Value::String(colored));
                 }
 
                 ListVariable::Kind => {
                     let value = kind.to_string();
-                    let colored = apply_color(var, value);
+                    let colored = config.colors.apply_style(&kind, ext, var, value);
                     context.insert("kind", Value::String(colored));
                 }
 
                 ListVariable::Size => {
                     let value = config.size_unit.format_bytes(metadata.len());
-                    let colored = apply_color(var, value);
+                    let colored = config.colors.apply_style(&kind, ext, var, value);
                     context.insert("size", Value::String(colored));
                 }
 
@@ -186,14 +176,15 @@ pub fn execute(args: &ListArgs, config: &ListConfig) -> Result<(), PlsError> {
                             FileKind::Executable => &config.icons.executable,
                         };
 
-                        let colored = apply_color(var, icon.to_string());
+                        let colored = config.colors.apply_style(&kind, ext, var, icon.to_string());
+
                         context.insert("icon", Value::String(colored));
                     }
                 }
 
                 ListVariable::Permissions => {
                     let value = util::permissions_to_string(metadata.mode());
-                    let colored = apply_color(var, value);
+                    let colored = config.colors.apply_style(&kind, ext, var, value);
                     context.insert("permissions", Value::String(colored));
                 }
 
@@ -202,7 +193,8 @@ pub fn execute(args: &ListArgs, config: &ListConfig) -> Result<(), PlsError> {
                         let date = DateTime::<Local>::from(ctime)
                             .format(&config.created_format)
                             .to_string();
-                        let colored = apply_color(var, date);
+                        let colored = config.colors.apply_style(&kind, ext, var, date);
+
                         context.insert("created", Value::String(colored));
                     } else {
                         context.insert("created", Value::Str("N/A"));
@@ -214,7 +206,8 @@ pub fn execute(args: &ListArgs, config: &ListConfig) -> Result<(), PlsError> {
                         let date = DateTime::<Local>::from(mtime)
                             .format(&config.modified_format)
                             .to_string();
-                        let colored = apply_color(var, date);
+                        let colored = config.colors.apply_style(&kind, ext, var, date);
+
                         context.insert("modified", Value::String(colored));
                     } else {
                         context.insert("modified", Value::Str("N/A"));
@@ -226,7 +219,8 @@ pub fn execute(args: &ListArgs, config: &ListConfig) -> Result<(), PlsError> {
                         let date = DateTime::<Local>::from(atime)
                             .format(&config.accessed_format)
                             .to_string();
-                        let colored = apply_color(var, date);
+                        let colored = config.colors.apply_style(&kind, ext, var, date);
+
                         context.insert("accessed", Value::String(colored));
                     } else {
                         context.insert("accessed", Value::Str("N/A"));
@@ -242,7 +236,8 @@ pub fn execute(args: &ListArgs, config: &ListConfig) -> Result<(), PlsError> {
 
                         if let Some(user) = get_user_by_uid(uid) {
                             let value = user.name().to_string_lossy().to_string();
-                            let colored = apply_color(var, value);
+                            let colored = config.colors.apply_style(&kind, ext, var, value);
+
                             context.insert("owner", Value::String(colored));
                         } else {
                             context.insert("owner", Value::Str("N/A"));
@@ -264,7 +259,8 @@ pub fn execute(args: &ListArgs, config: &ListConfig) -> Result<(), PlsError> {
 
                         if let Some(group) = get_group_by_gid(gid) {
                             let value = group.name().to_string_lossy().to_string();
-                            let colored = apply_color(var, value);
+                            let colored = config.colors.apply_style(&kind, ext, var, value);
+
                             context.insert("group", Value::String(colored));
                         } else {
                             context.insert("group", Value::Str("N/A"));
@@ -279,7 +275,8 @@ pub fn execute(args: &ListArgs, config: &ListConfig) -> Result<(), PlsError> {
 
                 ListVariable::NLink => {
                     let value = metadata.nlink().to_string();
-                    let colored = apply_color(var, value);
+                    let colored = config.colors.apply_style(&kind, ext, var, value);
+
                     context.insert("nlink", Value::String(colored));
                 }
             }

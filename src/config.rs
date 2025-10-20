@@ -1,5 +1,5 @@
 use crate::{commands::list::FileKind, err::PlsError, util};
-use serde::Deserialize;
+use serde::{Deserialize, de::DeserializeOwned};
 use std::{
     collections::{HashMap, HashSet},
     str::FromStr,
@@ -120,7 +120,7 @@ impl<'de> Deserialize<'de> for SizeUnit {
         let s: String = Deserialize::deserialize(deserializer)?;
         match s.to_lowercase().as_str() {
             "auto" => Ok(SizeUnit::Auto),
-            "bytes" => Ok(SizeUnit::Bytes),
+            "b" => Ok(SizeUnit::Bytes),
             "kb" => Ok(SizeUnit::KB),
             "mb" => Ok(SizeUnit::MB),
             "gb" => Ok(SizeUnit::GB),
@@ -130,6 +130,13 @@ impl<'de> Deserialize<'de> for SizeUnit {
                 s
             ))),
         }
+    }
+}
+
+pub trait Style {
+    fn apply<S: AsRef<str>>(&self, val: S) -> String;
+    fn reset() -> &'static str {
+        "\x1b[0m"
     }
 }
 
@@ -175,6 +182,7 @@ impl Color {
 
             Color::Hex(hex) => {
                 let hex = hex.trim_start_matches('#');
+
                 if hex.len() == 6 {
                     if let (Ok(r), Ok(g), Ok(b)) = (
                         u8::from_str_radix(&hex[0..2], 16),
@@ -190,13 +198,59 @@ impl Color {
             Color::Ansi(code) => format!("\x1b[38;5;{}m", code),
         }
     }
+}
+
+impl Style for Color {
+    fn apply<S: AsRef<str>>(&self, val: S) -> String {
+        format!("{}{}{}", self.to_ansi(), val.as_ref(), Color::reset())
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub enum TextStyle {
+    Normal,
+    Bold,
+    Italic,
+    Underline,
+    StrikeThrough,
+    Blink,
+    Inverse,
+    Conceal,
+    CrossedOut,
+    DoubleUnderline,
+}
+
+impl Default for TextStyle {
+    fn default() -> Self {
+        TextStyle::Normal
+    }
+}
+
+impl TextStyle {
+    pub fn to_ansi(&self) -> &'static str {
+        match self {
+            TextStyle::Normal => "",
+            TextStyle::Bold => "\x1b[1m",
+            TextStyle::Italic => "\x1b[3m",
+            TextStyle::Underline => "\x1b[4m",
+            TextStyle::StrikeThrough => "\x1b[9m",
+            TextStyle::Blink => "\x1b[5m",
+            TextStyle::Inverse => "\x1b[7m",
+            TextStyle::Conceal => "\x1b[8m",
+            TextStyle::CrossedOut => "\x1b[9m",
+            TextStyle::DoubleUnderline => "\x1b[21m",
+        }
+    }
 
     pub fn reset() -> &'static str {
         "\x1b[0m"
     }
+}
 
-    pub fn colorize(&self, text: &str) -> String {
-        format!("{}{}{}", self.to_ansi(), text, Color::reset())
+impl Style for TextStyle {
+    fn apply<S: AsRef<str>>(&self, val: S) -> String {
+        let ansi = self.to_ansi();
+        format!("{}{}{}", ansi, val.as_ref(), TextStyle::reset())
     }
 }
 
@@ -273,53 +327,45 @@ impl Default for ListIconConfig {
 /// on file type or extension,
 #[derive(Debug, Clone, Deserialize)]
 #[serde(untagged)]
-pub enum VariableColorConfig {
+pub enum VariableStyleConfig<T: Default> {
     /// This will apply the said color to all instances
     /// of the variable across the listing.
-    Simple(Color),
+    Simple(T),
 
     Complex {
         /// Color applied based on the entry kind.
         #[serde(default)]
-        kinds: HashMap<FileKind, Color>,
+        kinds: HashMap<FileKind, T>,
 
         /// Color applied based on the file extension.
         #[serde(default)]
-        extensions: HashMap<String, Color>,
+        extensions: HashMap<String, T>,
 
         /// The fallback color if no other rule matches.
         /// The default color is white
         #[serde(default)]
-        default: Color,
+        default: T,
     },
 }
 
-impl VariableColorConfig {
-    /// Resolves the appropriate color for this variable based on file context.
-    ///
-    /// # Arguments
-    /// * `kind` - The file kind (File, Directory, etc.)
-    /// * `extension` - The file extension (if any)
-    ///
-    /// # Returns
-    /// The resolved `Color` based on the configuration
-    pub fn resolve_color(&self, kind: FileKind, extension: Option<&str>) -> &Color {
+impl<T: Default> VariableStyleConfig<T> {
+    pub fn resolve_style(&self, kind: &FileKind, extension: Option<&str>) -> &T {
         match self {
-            VariableColorConfig::Simple(color) => color,
-            VariableColorConfig::Complex {
+            VariableStyleConfig::Simple(t) => t,
+            VariableStyleConfig::Complex {
                 kinds,
                 extensions,
                 default,
             } => {
                 // First try to match by extension if provided
                 if let Some(ext) = extension {
-                    if let Some(color) = extensions.get(ext) {
-                        return color;
+                    if let Some(t) = extensions.get(ext) {
+                        return t;
                     }
                 }
 
-                if let Some(color) = kinds.get(&kind) {
-                    return color;
+                if let Some(t) = kinds.get(&kind) {
+                    return t;
                 }
 
                 default
@@ -329,18 +375,33 @@ impl VariableColorConfig {
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
-pub struct ColorConfig {
+pub struct StyleConfig<T: Default + Style> {
     #[serde(default)]
     pub enabled: bool,
 
-    #[serde(default)]
-    pub kinds: HashMap<FileKind, Color>,
+    #[serde(default, flatten)]
+    pub variables: HashMap<ListVariable, VariableStyleConfig<T>>,
+}
 
-    #[serde(default)]
-    pub extensions: HashMap<String, Color>,
+impl<T: Default + Style> StyleConfig<T> {
+    pub fn apply_style(
+        &self,
+        kind: &FileKind,
+        ext: Option<&str>,
+        var: &ListVariable,
+        value: String,
+    ) -> String {
+        if !self.enabled {
+            return value;
+        }
 
-    #[serde(default)]
-    pub variables: HashMap<ListVariable, VariableColorConfig>,
+        if let Some(conf) = self.variables.get(var) {
+            let style = conf.resolve_style(kind, ext);
+            return style.apply(value);
+        }
+
+        value
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -370,7 +431,10 @@ pub struct ListConfig {
     pub icons: ListIconConfig,
 
     #[serde(default)]
-    pub colors: ColorConfig,
+    pub colors: StyleConfig<Color>,
+
+    #[serde(default)]
+    pub text: StyleConfig<TextStyle>,
 }
 
 impl ListConfig {
@@ -431,7 +495,7 @@ impl Default for ListConfig {
             created_format: Self::default_created_format(),
             size_unit: SizeUnit::default(),
             icons: ListIconConfig::default(),
-            colors: ColorConfig::default(),
+            colors: StyleConfig::default(),
         }
     }
 }

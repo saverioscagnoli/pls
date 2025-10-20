@@ -1,3 +1,5 @@
+use crate::config::{ListVariable, StyleConfig};
+
 pub fn keep_ascii_letters_and_whitespace(s: &str) -> String {
     s.chars()
         .map(|c| if c.is_alphabetic() { c } else { ' ' })
