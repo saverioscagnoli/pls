@@ -142,6 +142,12 @@ pub enum Color {
     Ansi(u8),        // ANSI 256 color code
 }
 
+impl Default for Color {
+    fn default() -> Self {
+        Color::Named("white".to_string())
+    }
+}
+
 impl Color {
     pub fn to_ansi(&self) -> String {
         match self {
@@ -164,7 +170,9 @@ impl Color {
                 "bright_white" => "\x1b[97m".to_string(),
                 _ => String::new(),
             },
+
             Color::Rgb(r, g, b) => format!("\x1b[38;2;{};{};{}m", r, g, b),
+
             Color::Hex(hex) => {
                 let hex = hex.trim_start_matches('#');
                 if hex.len() == 6 {
@@ -178,12 +186,17 @@ impl Color {
                 }
                 String::new()
             }
+
             Color::Ansi(code) => format!("\x1b[38;5;{}m", code),
         }
     }
 
     pub fn reset() -> &'static str {
         "\x1b[0m"
+    }
+
+    pub fn colorize(&self, text: &str) -> String {
+        format!("{}{}{}", self.to_ansi(), text, Color::reset())
     }
 }
 
@@ -255,6 +268,66 @@ impl Default for ListIconConfig {
     }
 }
 
+/// Enum representing color configuration per-variable,
+/// so for example you could wanted to color the "name" variable based
+/// on file type or extension,
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+pub enum VariableColorConfig {
+    /// This will apply the said color to all instances
+    /// of the variable across the listing.
+    Simple(Color),
+
+    Complex {
+        /// Color applied based on the entry kind.
+        #[serde(default)]
+        kinds: HashMap<FileKind, Color>,
+
+        /// Color applied based on the file extension.
+        #[serde(default)]
+        extensions: HashMap<String, Color>,
+
+        /// The fallback color if no other rule matches.
+        /// The default color is white
+        #[serde(default)]
+        default: Color,
+    },
+}
+
+impl VariableColorConfig {
+    /// Resolves the appropriate color for this variable based on file context.
+    ///
+    /// # Arguments
+    /// * `kind` - The file kind (File, Directory, etc.)
+    /// * `extension` - The file extension (if any)
+    ///
+    /// # Returns
+    /// The resolved `Color` based on the configuration
+    pub fn resolve_color(&self, kind: FileKind, extension: Option<&str>) -> &Color {
+        match self {
+            VariableColorConfig::Simple(color) => color,
+            VariableColorConfig::Complex {
+                kinds,
+                extensions,
+                default,
+            } => {
+                // First try to match by extension if provided
+                if let Some(ext) = extension {
+                    if let Some(color) = extensions.get(ext) {
+                        return color;
+                    }
+                }
+
+                if let Some(color) = kinds.get(&kind) {
+                    return color;
+                }
+
+                default
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct ColorConfig {
     #[serde(default)]
@@ -267,7 +340,7 @@ pub struct ColorConfig {
     pub extensions: HashMap<String, Color>,
 
     #[serde(default)]
-    pub variables: HashMap<ListVariable, Color>,
+    pub variables: HashMap<ListVariable, VariableColorConfig>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

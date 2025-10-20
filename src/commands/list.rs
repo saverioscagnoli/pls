@@ -1,5 +1,5 @@
 use crate::args::ListArgs;
-use crate::config::{ListConfig, ListVariable, SizeUnit};
+use crate::config::{ListConfig, ListVariable};
 use crate::err::PlsError;
 use crate::table::Table;
 use crate::util;
@@ -116,34 +116,56 @@ pub fn execute(args: &ListArgs, config: &ListConfig) -> Result<(), PlsError> {
             }
         })
     {
-        let name = entry.file_name().to_string_lossy().to_string();
+        let name = entry.file_name();
+        let hidden = name.to_string_lossy().starts_with('.');
 
-        if !args.all && name.starts_with('.') {
+        if !args.all && hidden {
             continue;
         }
 
         let path = entry.path();
-        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+        let ext = path.extension().and_then(|e| e.to_str());
         let (kind, metadata) = FileKind::from_path(&path);
+
+        // Helper function to apply color to a value if configured
+        let apply_color = |var: &ListVariable, value: String| -> String {
+            if config.colors.enabled {
+                if let Some(var_config) = config.colors.variables.get(var) {
+                    let color = var_config.resolve_color(kind, ext);
+                    return color.colorize(&value);
+                }
+            }
+            value
+        };
 
         for var in &used_variables {
             match var {
                 ListVariable::Name => {
-                    context.insert("name", Value::String(name.to_string()));
+                    let value = name.to_string_lossy().to_string();
+                    let mut colored = apply_color(var, value);
+
+                    if args.all && !hidden {
+                        colored.insert(0, ' ');
+                    }
+
+                    context.insert("name", Value::String(colored));
                 }
                 ListVariable::Path => {
-                    context.insert("path", Value::String(path.to_string_lossy().to_string()));
+                    let value = path.to_string_lossy().to_string();
+                    let colored = apply_color(var, value);
+                    context.insert("path", Value::String(colored));
                 }
 
                 ListVariable::Kind => {
-                    context.insert("kind", Value::String(kind.to_string()));
+                    let value = kind.to_string();
+                    let colored = apply_color(var, value);
+                    context.insert("kind", Value::String(colored));
                 }
 
                 ListVariable::Size => {
-                    context.insert(
-                        "size",
-                        Value::String(config.size_unit.format_bytes(metadata.len())),
-                    );
+                    let value = config.size_unit.format_bytes(metadata.len());
+                    let colored = apply_color(var, value);
+                    context.insert("size", Value::String(colored));
                 }
 
                 ListVariable::Depth => {
@@ -151,26 +173,28 @@ pub fn execute(args: &ListArgs, config: &ListConfig) -> Result<(), PlsError> {
                 }
 
                 ListVariable::Icon => {
-                    let icon = match kind {
-                        FileKind::File => config
-                            .icons
-                            .extensions
-                            .get(ext)
-                            .unwrap_or(&config.icons.file),
-                        FileKind::Directory => &config.icons.directory,
-                        FileKind::SymlinkFile => &config.icons.symlink_file,
-                        FileKind::SymlinkDirectory => &config.icons.symlink_directory,
-                        FileKind::Executable => &config.icons.executable,
-                    };
+                    if config.icons.enabled {
+                        let icon = match kind {
+                            FileKind::File => config
+                                .icons
+                                .extensions
+                                .get(ext.unwrap_or(""))
+                                .unwrap_or(&config.icons.file),
+                            FileKind::Directory => &config.icons.directory,
+                            FileKind::SymlinkFile => &config.icons.symlink_file,
+                            FileKind::SymlinkDirectory => &config.icons.symlink_directory,
+                            FileKind::Executable => &config.icons.executable,
+                        };
 
-                    context.insert("icon", Value::String(icon.to_string()));
+                        let colored = apply_color(var, icon.to_string());
+                        context.insert("icon", Value::String(colored));
+                    }
                 }
 
                 ListVariable::Permissions => {
-                    context.insert(
-                        "permissions",
-                        Value::String(util::permissions_to_string(metadata.mode())),
-                    );
+                    let value = util::permissions_to_string(metadata.mode());
+                    let colored = apply_color(var, value);
+                    context.insert("permissions", Value::String(colored));
                 }
 
                 ListVariable::Created => {
@@ -178,8 +202,8 @@ pub fn execute(args: &ListArgs, config: &ListConfig) -> Result<(), PlsError> {
                         let date = DateTime::<Local>::from(ctime)
                             .format(&config.created_format)
                             .to_string();
-
-                        context.insert("created", Value::String(date));
+                        let colored = apply_color(var, date);
+                        context.insert("created", Value::String(colored));
                     } else {
                         context.insert("created", Value::Str("N/A"));
                     }
@@ -190,8 +214,8 @@ pub fn execute(args: &ListArgs, config: &ListConfig) -> Result<(), PlsError> {
                         let date = DateTime::<Local>::from(mtime)
                             .format(&config.modified_format)
                             .to_string();
-
-                        context.insert("modified", Value::String(date));
+                        let colored = apply_color(var, date);
+                        context.insert("modified", Value::String(colored));
                     } else {
                         context.insert("modified", Value::Str("N/A"));
                     }
@@ -202,8 +226,8 @@ pub fn execute(args: &ListArgs, config: &ListConfig) -> Result<(), PlsError> {
                         let date = DateTime::<Local>::from(atime)
                             .format(&config.accessed_format)
                             .to_string();
-
-                        context.insert("accessed", Value::String(date));
+                        let colored = apply_color(var, date);
+                        context.insert("accessed", Value::String(colored));
                     } else {
                         context.insert("accessed", Value::Str("N/A"));
                     }
@@ -217,10 +241,9 @@ pub fn execute(args: &ListArgs, config: &ListConfig) -> Result<(), PlsError> {
                         let uid = metadata.uid();
 
                         if let Some(user) = get_user_by_uid(uid) {
-                            context.insert(
-                                "owner",
-                                Value::String(user.name().to_string_lossy().to_string()),
-                            );
+                            let value = user.name().to_string_lossy().to_string();
+                            let colored = apply_color(var, value);
+                            context.insert("owner", Value::String(colored));
                         } else {
                             context.insert("owner", Value::Str("N/A"));
                         }
@@ -240,10 +263,9 @@ pub fn execute(args: &ListArgs, config: &ListConfig) -> Result<(), PlsError> {
                         let gid = metadata.gid();
 
                         if let Some(group) = get_group_by_gid(gid) {
-                            context.insert(
-                                "group",
-                                Value::String(group.name().to_string_lossy().to_string()),
-                            );
+                            let value = group.name().to_string_lossy().to_string();
+                            let colored = apply_color(var, value);
+                            context.insert("group", Value::String(colored));
                         } else {
                             context.insert("group", Value::Str("N/A"));
                         }
@@ -256,14 +278,18 @@ pub fn execute(args: &ListArgs, config: &ListConfig) -> Result<(), PlsError> {
                 }
 
                 ListVariable::NLink => {
-                    context.insert("nlink", Value::Int(metadata.nlink() as i64));
+                    let value = metadata.nlink().to_string();
+                    let colored = apply_color(var, value);
+                    context.insert("nlink", Value::String(colored));
                 }
             }
         }
 
         for t in &templates {
             match t.format(&context) {
-                Ok(f) => row.push((f, t.alignment())),
+                Ok(formatted) => {
+                    row.push((formatted, t.alignment()));
+                }
                 Err(e) => {
                     writeln!(handle, "{}", e)?;
                     continue;
