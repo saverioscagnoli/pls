@@ -1,12 +1,3 @@
-use crate::style::VariableStyle;
-use std::collections::HashMap;
-
-pub fn keep_letters_whitespace(s: &str) -> String {
-    s.chars()
-        .filter(|c| c.is_alphabetic() || c.is_whitespace())
-        .collect()
-}
-
 pub fn permissions_to_string(mode: u32) -> String {
     let mut perms = String::with_capacity(9);
 
@@ -21,18 +12,4 @@ pub fn permissions_to_string(mode: u32) -> String {
     }
 
     perms
-}
-
-/// Apply a `VariableStyle` from a style map to a string.
-/// If no style is present for `key`, returns the original string.
-pub fn apply_style<S: AsRef<str>>(
-    style_map: &HashMap<String, VariableStyle>,
-    key: &str,
-    s: S,
-) -> String {
-    if let Some(style) = style_map.get(key) {
-        style.apply(s)
-    } else {
-        s.as_ref().to_string()
-    }
 }

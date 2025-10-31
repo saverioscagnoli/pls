@@ -1,8 +1,7 @@
 use std::{
     cmp::Ordering,
     fs::{DirEntry, ReadDir},
-    ops::{Deref, DerefMut},
-    path::{Path, PathBuf},
+    path::Path,
     usize,
 };
 
