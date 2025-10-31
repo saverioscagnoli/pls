@@ -5,8 +5,44 @@ mod util;
 mod walk;
 
 use crate::config::Config;
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use std::path::PathBuf;
+
+#[cfg(not(target_env = "msvc"))]
+use tikv_jemallocator::Jemalloc;
+
+#[cfg(not(target_env = "msvc"))]
+#[global_allocator]
+static GLOBAL: Jemalloc = Jemalloc;
+
+#[derive(Debug, Clone, Parser)]
+pub struct FindArgs {
+    #[arg(index = 1)]
+    pattern: String,
+
+    #[arg(index = 2, default_value = ".")]
+    root: PathBuf,
+
+    #[arg(short, long, default_value_t = false)]
+    all: bool,
+
+    #[arg(short, long, default_value_t = usize::MAX)]
+    depth: usize,
+
+    #[arg(short, long, default_value_t = false)]
+    follow_symlinks: bool,
+
+    #[arg(short, long, default_value_t = false)]
+    exact: bool,
+
+    #[arg(short, long, default_value_t = false)]
+    timed: bool,
+}
+
+#[derive(Debug, Clone, Subcommand)]
+enum Command {
+    Find(FindArgs),
+}
 
 #[derive(Debug, Clone, Parser)]
 struct Args {
@@ -24,6 +60,9 @@ struct Args {
 
     #[arg(short, long, default_value_t = false)]
     pad_names: bool,
+
+    #[command(subcommand)]
+    subcommand: Option<Command>,
 }
 
 fn main() {
@@ -36,5 +75,8 @@ fn main() {
         }
     };
 
-    commands::list::execute(&args, &config.ls);
+    match args.subcommand {
+        Some(Command::Find(args)) => commands::find::execute(&args),
+        _ => commands::list::execute(&args, &config.ls),
+    }
 }
