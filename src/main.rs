@@ -8,13 +8,6 @@ use crate::config::Config;
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
-// #[cfg(not(target_env = "msvc"))]
-// use tikv_jemallocator::Jemalloc;
-
-// #[cfg(not(target_env = "msvc"))]
-// #[global_allocator]
-// static GLOBAL: Jemalloc = Jemalloc;
-
 #[derive(Debug, Clone, Parser)]
 pub struct FindArgs {
     #[arg(index = 1)]

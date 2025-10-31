@@ -7,7 +7,7 @@ url="https://github.com/saverioscagnoli/pls"
 license=('MIT')
 depends=()
 makedepends=('rust' 'cargo')
-source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
+source=("$pkgname-$pkgver.tar.gz::https://github.com/saverioscagnoli/pls/archive/refs/tags/v$pkgver.tar.gz")
 sha256sums=('c3dd291ca02d43e52e78e3b5b6f221016972880f72c3b7d41150628b871fd01a')
 
 build() {
