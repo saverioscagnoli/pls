@@ -4,7 +4,23 @@ A modern, fast, and highly customizable `ls` successor.
 
 ## Installation
 
-#### Manual Installation
+### Arch
+
+`pls` is available on `aur` under the name `pls-tools`. You can use an `aur` helper like `yay`:
+
+```bash
+yay -S pls-tools
+```
+
+Or build it manually with `makepkg`:
+
+```bash
+git clone https://aur.archlinux.org/pls-tools.git
+cd pls-tools
+makepkg -si
+```
+
+### Manual Installation
 
 ```bash
 # Clone and build
