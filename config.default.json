@@ -1,1 +1,53 @@
-{ "$schema": "./config.schema.json" }
+{
+  "$schema": "./config.schema.json",
+  "ls": {
+    "format": [
+      "{ :depth}{icon} {name}",
+      "{permissions}",
+      "{size>}",
+      "{modified^}"
+    ],
+    "styles": {
+      "name": {
+        "conditions": [
+          {
+            "variable": "kind",
+            "op": "eq",
+            "value": "directory",
+            "result": {
+              "foreground": "blue",
+              "text": ["bold"]
+            }
+          },
+          {
+            "variable": "kind",
+            "op": "eq",
+            "value": "executable",
+            "result": {
+              "foreground": "green",
+              "text": ["bold"]
+            }
+          }
+        ]
+      },
+      "icon": {
+        "conditions": [
+          {
+            "variable": "kind",
+            "op": "eq",
+            "value": "directory",
+            "result": {
+              "foreground": "blue",
+              "text": ["bold"]
+            }
+          }
+        ]
+      },
+      "permissions": {
+        "default": {
+          "foreground": "gray"
+        }
+      }
+    }
+  }
+}

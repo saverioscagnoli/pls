@@ -1,136 +1,257 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "pls configuration schema",
-  "description": "schema for configuring pls",
+  "title": "PLS Configuration Schema",
+  "description": "Schema for the configuration file of PLS.",
   "type": "object",
   "properties": {
     "ls": {
       "type": "object",
-      "description": "configuration for the list command output",
+      "description": "List command configuration.",
+      "default": {},
       "properties": {
         "format": {
           "type": "array",
-          "description": "array of template strings. it is what defines the output of the command",
-          "items": {
-            "type": "string"
-          },
-          "minItems": 1
+          "description": "The output format order using template variables like {name}, {kind}, etc.",
+          "items": { "type": "string" },
+          "default": [
+            "{kind}",
+            "{name}",
+            "{permissions}",
+            "{size}",
+            "{modified}"
+          ]
         },
         "padding": {
-          "type": "number",
-          "description": "the spacing between colums, think of it as the space between the format array strings",
+          "type": "integer",
+          "description": "Number of spaces between columns.",
+          "default": 2,
           "minimum": 0
         },
-        "style": {
+        "headers": {
+          "type": "array",
+          "description": "Table headers (should be the same length as the format array)",
+          "items": {
+            "type": "string"
+          }
+        },
+        "icon": {
+          "$ref": "#/$defs/IfString",
+          "description": "Conditional icons based on file type."
+        },
+        "styles": {
           "type": "object",
-          "description": "configuration for per-variable style",
+          "description": "Mapping of named styles (like kind or permissions) to conditional style rules.",
           "properties": {
             "name": {
-              "oneOf": [
-                { "$ref": "#/definitions/variableStyle" },
-                { "$ref": "#/definitions/conditionalStyle" }
-              ]
+              "$ref": "#/$defs/IfStyle"
             },
             "path": {
-              "oneOf": [
-                { "$ref": "#/definitions/variableStyle" },
-                { "$ref": "#/definitions/conditionalStyle" }
-              ]
+              "$ref": "#/$defs/IfStyle"
+            },
+            "extension": {
+              "$ref": "#/$defs/IfStyle"
             },
             "kind": {
-              "oneOf": [
-                { "$ref": "#/definitions/variableStyle" },
-                { "$ref": "#/definitions/conditionalStyle" }
-              ]
+              "$ref": "#/$defs/IfStyle"
+            },
+            "depth": {
+              "$ref": "#/$defs/IfStyle"
             },
             "size": {
-              "oneOf": [
-                { "$ref": "#/definitions/variableStyle" },
-                { "$ref": "#/definitions/conditionalStyle" }
-              ]
-            },
-            "icon": {
-              "oneOf": [
-                { "$ref": "#/definitions/variableStyle" },
-                { "$ref": "#/definitions/conditionalStyle" }
-              ]
+              "$ref": "#/$defs/IfStyle"
             },
             "permissions": {
-              "oneOf": [
-                { "$ref": "#/definitions/variableStyle" },
-                { "$ref": "#/definitions/conditionalStyle" }
-              ]
+              "$ref": "#/$defs/IfStyle"
             },
             "created": {
-              "oneOf": [
-                { "$ref": "#/definitions/variableStyle" },
-                { "$ref": "#/definitions/conditionalStyle" }
-              ]
+              "$ref": "#/$defs/IfStyle"
             },
             "modified": {
-              "oneOf": [
-                { "$ref": "#/definitions/variableStyle" },
-                { "$ref": "#/definitions/conditionalStyle" }
-              ]
+              "$ref": "#/$defs/IfStyle"
             },
             "accessed": {
-              "oneOf": [
-                { "$ref": "#/definitions/variableStyle" },
-                { "$ref": "#/definitions/conditionalStyle" }
-              ]
+              "$ref": "#/$defs/IfStyle"
             },
             "owner": {
-              "oneOf": [
-                { "$ref": "#/definitions/variableStyle" },
-                { "$ref": "#/definitions/conditionalStyle" }
-              ]
+              "$ref": "#/$defs/IfStyle"
             },
             "group": {
-              "oneOf": [
-                { "$ref": "#/definitions/variableStyle" },
-                { "$ref": "#/definitions/conditionalStyle" }
-              ]
+              "$ref": "#/$defs/IfStyle"
+            },
+            "nlink": {
+              "$ref": "#/$defs/IfStyle"
             }
-          }
+          },
+          "default": {}
+        },
+        "size_unit": {
+          "type": "string",
+          "description": "Controls how file sizes are displayed.",
+          "enum": ["auto", "b", "kb", "mb", "gb", "tb"],
+          "default": "auto"
+        },
+        "created_fmt": {
+          "type": "string",
+          "description": "Date/time format for file creation timestamp.",
+          "default": "%b %d %H:%M"
+        },
+        "modified_fmt": {
+          "type": "string",
+          "description": "Date/time format for file modification timestamp.",
+          "default": "%b %d %H:%M"
+        },
+        "accessed_fmt": {
+          "type": "string",
+          "description": "Date/time format for file access timestamp.",
+          "default": "%b %d %H:%M"
         }
-      }
+      },
+      "required": []
     }
   },
-  "definitions": {
-    "color": {
+  "required": ["ls"],
+  "$defs": {
+    "IfString": {
+      "type": "object",
+      "description": "Conditional string configuration.",
+      "properties": {
+        "default": {
+          "type": "string",
+          "description": "Default string value."
+        },
+        "conditions": {
+          "type": "array",
+          "description": "Conditional rules that map variable comparisons to results.",
+          "items": { "$ref": "#/$defs/ConditionString" },
+          "default": []
+        }
+      },
+      "default": {
+        "default": "f",
+        "conditions": [
+          {
+            "variable": "kind",
+            "op": "eq",
+            "value": "directory",
+            "result": "d"
+          }
+        ]
+      }
+    },
+    "IfStyle": {
+      "type": "object",
+      "description": "Conditional style configuration.",
+      "properties": {
+        "default": {
+          "$ref": "#/$defs/Style",
+          "description": "Default style applied if no conditions match."
+        },
+        "conditions": {
+          "type": "array",
+          "description": "Conditional style rules.",
+          "items": { "$ref": "#/$defs/ConditionStyle" },
+          "default": []
+        }
+      },
+      "default": {
+        "default": {},
+        "conditions": []
+      }
+    },
+    "ConditionString": {
+      "type": "object",
+      "description": "A conditional mapping for a string result.",
+      "properties": {
+        "variable": { "type": "string" },
+        "op": {
+          "type": "string",
+          "enum": [
+            "==",
+            "!=",
+            ">",
+            "<",
+            ">=",
+            "<=",
+            "eq",
+            "ne",
+            "gt",
+            "lt",
+            "gte",
+            "lte"
+          ]
+        },
+        "value": { "type": "string" },
+        "result": { "type": "string" }
+      },
+      "required": ["variable", "op", "value", "result"]
+    },
+    "ConditionStyle": {
+      "type": "object",
+      "description": "A conditional mapping for a style result.",
+      "properties": {
+        "variable": { "type": "string" },
+        "op": {
+          "type": "string",
+          "enum": [
+            "==",
+            "!=",
+            ">",
+            "<",
+            ">=",
+            "<=",
+            "eq",
+            "ne",
+            "gt",
+            "lt",
+            "gte",
+            "lte"
+          ]
+        },
+        "value": { "type": "string" },
+        "result": { "$ref": "#/$defs/Style" }
+      },
+      "required": ["variable", "op", "value", "result"]
+    },
+    "Style": {
+      "type": "object",
+      "description": "Defines text color, background, and style.",
+      "properties": {
+        "foreground": { "$ref": "#/$defs/Color" },
+        "background": { "$ref": "#/$defs/Color" },
+        "text": {
+          "type": "array",
+          "description": "List of text styles to apply.",
+          "items": {
+            "type": "string",
+            "enum": [
+              "normal",
+              "bold",
+              "italic",
+              "underline",
+              "dim",
+              "strikethrough",
+              "blink",
+              "inverse",
+              "conceal",
+              "crossed out",
+              "double underline"
+            ]
+          },
+          "default": []
+        }
+      },
+      "default": {}
+    },
+    "Color": {
+      "description": "Color definition. Can be a named color, RGB tuple, hex code, or ANSI code.",
       "oneOf": [
         {
           "type": "string",
-          "description": "Color name or code",
-          "enum": [
-            "black",
-            "red",
-            "green",
-            "yellow",
-            "blue",
-            "magenta",
-            "cyan",
-            "white",
-            "gray",
-            "bright black",
-            "bright red",
-            "bright green",
-            "bright yellow",
-            "bright blue",
-            "bright magenta",
-            "bright cyan",
-            "bright white"
-          ]
-        },
-        {
-          "type": "integer",
-          "description": "ansi color code",
-          "minimum": 0,
-          "maximum": 255
+          "description": "Named or hex color (e.g., 'red' or '#FF0000')."
         },
         {
           "type": "array",
-          "description": "RGB color as [r, g, b]",
+          "description": "RGB triplet, e.g., [255, 0, 0].",
           "items": {
             "type": "integer",
             "minimum": 0,
@@ -138,109 +259,16 @@
           },
           "minItems": 3,
           "maxItems": 3
-        }
-      ]
-    },
-    "text": {
-      "type": "array",
-      "items": {
-        "type": "string",
-        "enum": [
-          "bold",
-          "italic",
-          "underline",
-          "strikethrough",
-          "blink",
-          "inverse",
-          "conceal",
-          "overline",
-          "double_underline"
-        ]
-      }
-    },
-    "variableStyle": {
-      "type": "object",
-      "description": "Style for variables",
-      "properties": {
-        "foreground": {
-          "$ref": "#/definitions/color"
         },
-        "background": {
-          "$ref": "#/definitions/color"
-        },
-        "text": {
-          "$ref": "#/definitions/text"
+        {
+          "type": "integer",
+          "description": "ANSI color code (0–255).",
+          "minimum": 0,
+          "maximum": 255
         }
-      }
-    },
-    "conditionOperator": {
-      "type": "string",
-      "enum": [
-        "eq",
-        "neq",
-        "lt",
-        "lte",
-        "gt",
-        "gte",
-        "regex",
-        "contains",
-        "in",
-        "exists"
       ],
-      "description": "Operator used to compare a metadata field with a value"
-    },
-    "conditionValue": {
-      "oneOf": [
-        { "type": "string" },
-        { "type": "number" },
-        { "type": "boolean" },
-        { "type": "array", "items": {} }
-      ]
-    },
-    "condition": {
-      "type": "object",
-      "description": "A condition to match against file metadata",
-      "required": ["field", "op"],
-      "properties": {
-        "field": {
-          "type": "string",
-          "description": "Metadata field to test, e.g. 'name','kind','size','extension','owner','group','permissions','created','modified','accessed'"
-        },
-        "op": { "$ref": "#/definitions/conditionOperator" },
-        "value": { "$ref": "#/definitions/conditionValue" }
-      },
-      "additionalProperties": false
-    },
-    "conditionalRule": {
-      "type": "object",
-      "required": ["when", "style"],
-      "properties": {
-        "when": {
-          "oneOf": [
-            { "$ref": "#/definitions/condition" },
-            {
-              "type": "array",
-              "items": { "$ref": "#/definitions/condition" },
-              "minItems": 1
-            }
-          ]
-        },
-        "style": { "$ref": "#/definitions/variableStyle" }
-      },
-      "additionalProperties": false
-    },
-    "conditionalStyle": {
-      "type": "object",
-      "description": "Either a default style plus ordered rules, or just rules. Rules are evaluated in order; first match wins.",
-      "properties": {
-        "default": { "$ref": "#/definitions/variableStyle" },
-        "rules": {
-          "type": "array",
-          "items": { "$ref": "#/definitions/conditionalRule" },
-          "minItems": 1
-        }
-      },
-      "additionalProperties": false
+      "examples": ["red", "#00FF00", [128, 0, 128], 196],
+      "default": "white"
     }
   }
 }

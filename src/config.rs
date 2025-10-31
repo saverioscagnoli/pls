@@ -4,6 +4,103 @@ use std::{
     collections::HashMap, fmt::Display, hash::Hash, os::unix::fs::PermissionsExt, path::Path,
 };
 
+// ============================================================================
+// Basic Enums (No Dependencies)
+// ============================================================================
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Op {
+    Equal,
+    NotEqual,
+    Greater,
+    Less,
+    GreaterEqual,
+    LessEqual,
+}
+
+impl<'de> Deserialize<'de> for Op {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s: String = Deserialize::deserialize(deserializer)?;
+        match s.to_lowercase().as_str() {
+            "==" | "eq" => Ok(Op::Equal),
+            "!=" | "ne" => Ok(Op::NotEqual),
+            ">" | "gt" => Ok(Op::Greater),
+            "<" | "lt" => Ok(Op::Less),
+            ">=" | "gte" => Ok(Op::GreaterEqual),
+            "<=" | "lte" => Ok(Op::LessEqual),
+            _ => Err(serde::de::Error::custom(format!("invalid operator: {}", s))),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum TextStyle {
+    Normal,
+    Bold,
+    Italic,
+    Underline,
+    Dim,
+    Strikethrough,
+    Blink,
+    Inverse,
+    Conceal,
+    CrossedOut,
+    DoubleUnderline,
+}
+
+impl Default for TextStyle {
+    fn default() -> Self {
+        Self::Normal
+    }
+}
+
+impl TextStyle {
+    pub fn to_ansi(&self) -> &'static str {
+        match self {
+            Self::Normal => "",
+            Self::Bold => "\x1b[1m",
+            Self::Italic => "\x1b[3m",
+            Self::Underline => "\x1b[4m",
+            Self::Dim => "\x1b[2m",
+            Self::Strikethrough => "\x1b[9m",
+            Self::Blink => "\x1b[5m",
+            Self::Inverse => "\x1b[7m",
+            Self::Conceal => "\x1b[8m",
+            Self::CrossedOut => "\x1b[9m",
+            Self::DoubleUnderline => "\x1b[21m",
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for TextStyle {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s: String = Deserialize::deserialize(deserializer)?;
+        match s.to_lowercase().as_str() {
+            "normal" => Ok(TextStyle::Normal),
+            "bold" => Ok(TextStyle::Bold),
+            "italic" => Ok(TextStyle::Italic),
+            "underline" => Ok(TextStyle::Underline),
+            "dim" => Ok(TextStyle::Dim),
+            "strikethrough" => Ok(TextStyle::Strikethrough),
+            "blink" => Ok(TextStyle::Blink),
+            "inverse" => Ok(TextStyle::Inverse),
+            "conceal" => Ok(TextStyle::Conceal),
+            "crossed out" => Ok(TextStyle::CrossedOut),
+            "double underline" => Ok(TextStyle::DoubleUnderline),
+            _ => Err(serde::de::Error::custom(format!(
+                "invalid text style: {}",
+                s
+            ))),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SizeUnit {
     Auto,
@@ -155,118 +252,9 @@ impl FileKind {
     }
 }
 
-#[derive(Debug, Clone)]
-pub enum Op {
-    Equal,
-    Greater,
-    Less,
-    GreaterEqual,
-    LessEqual,
-}
-
-impl<'de> Deserialize<'de> for Op {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let s: String = Deserialize::deserialize(deserializer)?;
-        match s.to_lowercase().as_str() {
-            "=" | "eq" => Ok(Op::Equal),
-            ">" | "gt" => Ok(Op::Greater),
-            "<" | "lt" => Ok(Op::Less),
-            ">=" | "gte" => Ok(Op::GreaterEqual),
-            "<=" | "lte" => Ok(Op::LessEqual),
-            _ => Err(serde::de::Error::custom(format!("invalid operator: {}", s))),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct Condition<T> {
-    pub variable: String,
-    pub op: Op,
-    pub value: String,
-    pub result: T,
-}
-
-impl<T> Condition<T> {
-    fn evaluate(&self, ctx: &HashMap<&'static str, Value>) -> bool {
-        let value = match ctx.get(self.variable.as_str()) {
-            Some(v) => v.to_string(),
-            None => return false,
-        };
-
-        match self.op {
-            Op::Equal => value == self.value,
-            Op::Greater => {
-                if let (Ok(a), Ok(b)) = (value.parse::<i64>(), self.value.parse::<i64>()) {
-                    a > b
-                } else {
-                    value > self.value
-                }
-            }
-
-            Op::Less => {
-                if let (Ok(a), Ok(b)) = (value.parse::<i64>(), self.value.parse::<i64>()) {
-                    a < b
-                } else {
-                    value < self.value
-                }
-            }
-
-            Op::GreaterEqual => {
-                if let (Ok(a), Ok(b)) = (value.parse::<i64>(), self.value.parse::<i64>()) {
-                    a >= b
-                } else {
-                    value >= self.value
-                }
-            }
-
-            Op::LessEqual => {
-                if let (Ok(a), Ok(b)) = (value.parse::<i64>(), self.value.parse::<i64>()) {
-                    a <= b
-                } else {
-                    value <= self.value
-                }
-            }
-        }
-    }
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct ListIconConfig {
-    #[serde(default)]
-    default: String,
-
-    #[serde(default)]
-    conditions: Vec<Condition<String>>,
-}
-
-impl Default for ListIconConfig {
-    fn default() -> Self {
-        Self {
-            default: String::from("f"),
-            conditions: vec![Condition {
-                variable: String::from("kind"),
-                op: Op::Equal,
-                value: String::from("directory"),
-                result: "d".to_string(),
-            }],
-        }
-    }
-}
-
-impl ListIconConfig {
-    pub fn resolve(&self, ctx: &HashMap<&'static str, Value>) -> String {
-        for rule in &self.conditions {
-            if rule.evaluate(ctx) {
-                return rule.result.to_string();
-            }
-        }
-
-        self.default.to_string()
-    }
-}
+// ============================================================================
+// Color and Styling (Depends on TextStyle)
+// ============================================================================
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(untagged)]
@@ -342,72 +330,6 @@ impl Color {
     }
 }
 
-/// Enum representing font styling.
-#[derive(Debug, Clone)]
-pub enum TextStyle {
-    Normal,
-    Bold,
-    Italic,
-    Underline,
-    Dim,
-    Strikethrough,
-    Blink,
-    Inverse,
-    Conceal,
-    CrossedOut,
-    DoubleUnderline,
-}
-
-impl Default for TextStyle {
-    fn default() -> Self {
-        Self::Normal
-    }
-}
-
-impl TextStyle {
-    pub fn to_ansi(&self) -> &'static str {
-        match self {
-            Self::Normal => "",
-            Self::Bold => "\x1b[1m",
-            Self::Italic => "\x1b[3m",
-            Self::Underline => "\x1b[4m",
-            Self::Dim => "\x1b[2m",
-            Self::Strikethrough => "\x1b[9m",
-            Self::Blink => "\x1b[5m",
-            Self::Inverse => "\x1b[7m",
-            Self::Conceal => "\x1b[8m",
-            Self::CrossedOut => "\x1b[9m",
-            Self::DoubleUnderline => "\x1b[21m",
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for TextStyle {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let s: String = Deserialize::deserialize(deserializer)?;
-        match s.to_lowercase().as_str() {
-            "normal" => Ok(TextStyle::Normal),
-            "bold" => Ok(TextStyle::Bold),
-            "italic" => Ok(TextStyle::Italic),
-            "underline" => Ok(TextStyle::Underline),
-            "dim" => Ok(TextStyle::Dim),
-            "strikethrough" => Ok(TextStyle::Strikethrough),
-            "blink" => Ok(TextStyle::Blink),
-            "inverse" => Ok(TextStyle::Inverse),
-            "conceal" => Ok(TextStyle::Conceal),
-            "crossed out" => Ok(TextStyle::CrossedOut),
-            "double underline" => Ok(TextStyle::DoubleUnderline),
-            _ => Err(serde::de::Error::custom(format!(
-                "invalid text style: {}",
-                s
-            ))),
-        }
-    }
-}
-
 #[derive(Debug, Default, Clone, Deserialize)]
 #[serde(default)]
 pub struct Style {
@@ -416,8 +338,22 @@ pub struct Style {
     pub text: Option<Vec<TextStyle>>,
 }
 
-impl Style {
-    pub fn apply<S: AsRef<str>>(&self, s: S) -> String {
+// ============================================================================
+// Apply Trait
+// ============================================================================
+
+pub trait Apply {
+    fn apply(&self, s: Option<String>) -> String;
+}
+
+impl Apply for String {
+    fn apply(&self, _s: Option<String>) -> String {
+        self.to_string()
+    }
+}
+
+impl Apply for Style {
+    fn apply(&self, s: Option<String>) -> String {
         let mut out = String::new();
         let mut applied = false;
 
@@ -450,7 +386,7 @@ impl Style {
             }
         }
 
-        out.push_str(s.as_ref());
+        out.push_str(s.unwrap().as_str());
 
         if applied {
             out.push_str("\x1b[0m");
@@ -460,37 +396,123 @@ impl Style {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
-pub struct FieldStyle {
-    #[serde(default)]
-    pub default: Option<Style>,
+// ============================================================================
+// Generic Conditional Logic (Depends on Apply trait)
+// ============================================================================
 
-    #[serde(default)]
-    pub conditions: Vec<Condition<Style>>,
+#[derive(Debug, Clone, Deserialize)]
+pub struct Condition<T: Apply> {
+    pub variable: String,
+    pub op: Op,
+    pub value: String,
+    pub result: T,
 }
 
-impl FieldStyle {
-    pub fn resolve<S: AsRef<str>>(&self, value: S, ctx: &HashMap<&'static str, Value>) -> String {
+impl<T: Apply> Condition<T> {
+    fn evaluate(&self, ctx: &HashMap<&'static str, Value>) -> bool {
+        let value = match ctx.get(self.variable.as_str()) {
+            Some(v) => v.to_string(),
+            None => return false,
+        };
+
+        match self.op {
+            Op::Equal => value == self.value,
+            Op::NotEqual => value != self.value,
+            Op::Greater => {
+                if let (Ok(a), Ok(b)) = (value.parse::<i64>(), self.value.parse::<i64>()) {
+                    a > b
+                } else {
+                    value > self.value
+                }
+            }
+
+            Op::Less => {
+                if let (Ok(a), Ok(b)) = (value.parse::<i64>(), self.value.parse::<i64>()) {
+                    a < b
+                } else {
+                    value < self.value
+                }
+            }
+
+            Op::GreaterEqual => {
+                if let (Ok(a), Ok(b)) = (value.parse::<i64>(), self.value.parse::<i64>()) {
+                    a >= b
+                } else {
+                    value >= self.value
+                }
+            }
+
+            Op::LessEqual => {
+                if let (Ok(a), Ok(b)) = (value.parse::<i64>(), self.value.parse::<i64>()) {
+                    a <= b
+                } else {
+                    value <= self.value
+                }
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct If<T: Apply> {
+    default: Option<T>,
+
+    #[serde(default)]
+    conditions: Vec<Condition<T>>,
+}
+
+impl Default for If<String> {
+    fn default() -> Self {
+        Self {
+            default: Some(String::from("f")),
+            conditions: vec![Condition {
+                variable: String::from("kind"),
+                op: Op::Equal,
+                value: String::from("directory"),
+                result: "d".to_string(),
+            }],
+        }
+    }
+}
+
+impl Default for If<Style> {
+    fn default() -> Self {
+        Self {
+            default: Some(Style::default()),
+            conditions: Vec::new(),
+        }
+    }
+}
+
+impl<T: Apply> If<T> {
+    pub fn resolve(&self, s: Option<String>, ctx: &HashMap<&'static str, Value>) -> String {
         for rule in &self.conditions {
             if rule.evaluate(ctx) {
-                return rule.result.apply(value);
+                return rule.result.apply(s);
             }
         }
 
-        self.default
-            .as_ref()
-            .unwrap_or(&Style::default())
-            .apply(value)
+        if let Some(default) = &self.default {
+            return default.apply(s);
+        }
+
+        s.unwrap_or_default()
     }
 }
+
+// ============================================================================
+// Configuration Structures (Depends on everything above)
+// ============================================================================
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct ListConfig {
     pub format: Vec<String>,
     pub padding: usize,
-    pub icons: ListIconConfig,
-    pub style: HashMap<String, FieldStyle>,
+    pub headers: Vec<String>,
+    pub icon: If<String>,
+    pub styles: HashMap<String, If<Style>>,
     pub size_unit: SizeUnit,
     pub created_fmt: String,
     pub modified_fmt: String,
@@ -508,8 +530,9 @@ impl Default for ListConfig {
                 String::from("{modified}"),
             ],
             padding: 2,
-            icons: ListIconConfig::default(),
-            style: HashMap::new(),
+            headers: vec![],
+            icon: If::<String>::default(),
+            styles: HashMap::new(),
             size_unit: SizeUnit::Auto,
             created_fmt: String::from("%b %d %H:%M"),
             modified_fmt: String::from("%b %d %H:%M"),

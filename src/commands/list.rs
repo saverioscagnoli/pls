@@ -141,28 +141,30 @@ fn apply_styles(map: &mut HashMap<&'static str, Value>, config: &ListConfig, arg
         "nlink",
     ] {
         if let Some(Value::String(s)) = map.get_mut(field) {
-            if let Some(style) = config.style.get(field) {
-                *s = style.resolve(&s, &context);
+            if let Some(style) = config.styles.get(field) {
+                *s = style.resolve(Some(s.to_string()), &context);
             }
         }
     }
 
     if let Some(Value::Int(d)) = map.get("depth") {
-        if let Some(style) = config.style.get("depth") {
-            let s = style.resolve(&d.to_string(), &context);
+        let mut d = d.to_string();
 
-            map.insert("depth_str", Value::String(s));
+        if let Some(style) = config.styles.get("depth") {
+            d = style.resolve(Some(d), &context);
         }
+
+        map.insert("depth_str", Value::String(d));
     }
 
     if let Some(Value::Int(size)) = map.get("size") {
-        let s = config.size_unit.format_bytes(*size as u64);
+        let mut s = config.size_unit.format_bytes(*size as u64);
 
-        if let Some(style) = config.style.get("size") {
-            let s = style.resolve(&s, &context);
-
-            map.insert("size", Value::String(s));
+        if let Some(style) = config.styles.get("size") {
+            s = style.resolve(Some(s), &context);
         }
+
+        map.insert("size", Value::String(s));
     }
 }
 
@@ -176,6 +178,10 @@ pub fn execute(args: &Args, config: &ListConfig) {
     let mut context = HashMap::new();
     let mut table = Table::new().padding(config.padding);
     let mut row = Vec::new();
+
+    if !config.headers.is_empty() {
+        table.add_headers(config.headers.as_slice());
+    }
 
     for (entry, depth) in DirWalker::new(&args.path)
         .max_depth(args.depth)
@@ -197,7 +203,10 @@ pub fn execute(args: &Args, config: &ListConfig) {
 
         insert_info_raw(&mut context, &info);
 
-        let icon = config.icons.resolve(&context);
+        // Resolve icon after raw data
+        // Because it must be resolved like styles,
+        // So we need to push raw data in first
+        let icon = config.icon.resolve(None, &context);
 
         context.insert("icon", Value::String(icon));
 
