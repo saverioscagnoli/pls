@@ -26,37 +26,70 @@
           "description": "configuration for per-variable style",
           "properties": {
             "name": {
-              "$ref": "#/definition/variableStyle"
+              "oneOf": [
+                { "$ref": "#/definitions/variableStyle" },
+                { "$ref": "#/definitions/conditionalStyle" }
+              ]
             },
             "path": {
-              "$ref": "#/definition/variableStyle"
+              "oneOf": [
+                { "$ref": "#/definitions/variableStyle" },
+                { "$ref": "#/definitions/conditionalStyle" }
+              ]
             },
             "kind": {
-              "$ref": "#/definition/variableStyle"
+              "oneOf": [
+                { "$ref": "#/definitions/variableStyle" },
+                { "$ref": "#/definitions/conditionalStyle" }
+              ]
             },
             "size": {
-              "$ref": "#/deifinition/variableStyle"
+              "oneOf": [
+                { "$ref": "#/definitions/variableStyle" },
+                { "$ref": "#/definitions/conditionalStyle" }
+              ]
             },
             "icon": {
-              "$ref": "#/definition/variableStyle"
+              "oneOf": [
+                { "$ref": "#/definitions/variableStyle" },
+                { "$ref": "#/definitions/conditionalStyle" }
+              ]
             },
             "permissions": {
-              "$ref": "#/definition/variableStyle"
+              "oneOf": [
+                { "$ref": "#/definitions/variableStyle" },
+                { "$ref": "#/definitions/conditionalStyle" }
+              ]
             },
             "created": {
-              "$ref": "#/definition/variableStyle"
+              "oneOf": [
+                { "$ref": "#/definitions/variableStyle" },
+                { "$ref": "#/definitions/conditionalStyle" }
+              ]
             },
             "modified": {
-              "$ref": "#/definition/variableStyle"
+              "oneOf": [
+                { "$ref": "#/definitions/variableStyle" },
+                { "$ref": "#/definitions/conditionalStyle" }
+              ]
             },
             "accessed": {
-              "$ref": "#/definition/variableStyle"
+              "oneOf": [
+                { "$ref": "#/definitions/variableStyle" },
+                { "$ref": "#/definitions/conditionalStyle" }
+              ]
             },
             "owner": {
-              "$ref": "#/definition/variableStyle"
+              "oneOf": [
+                { "$ref": "#/definitions/variableStyle" },
+                { "$ref": "#/definitions/conditionalStyle" }
+              ]
             },
             "group": {
-              "$ref": "#/definition/variableStyle"
+              "oneOf": [
+                { "$ref": "#/definitions/variableStyle" },
+                { "$ref": "#/definitions/conditionalStyle" }
+              ]
             }
           }
         }
@@ -79,14 +112,14 @@
             "cyan",
             "white",
             "gray",
-            "bright_black",
-            "bright_red",
-            "bright_green",
-            "bright_yellow",
-            "bright_blue",
-            "bright_magenta",
-            "bright_cyan",
-            "bright_white"
+            "bright black",
+            "bright red",
+            "bright green",
+            "bright yellow",
+            "bright blue",
+            "bright magenta",
+            "bright cyan",
+            "bright white"
           ]
         },
         {
@@ -109,40 +142,105 @@
       ]
     },
     "text": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "bold",
+          "italic",
+          "underline",
+          "strikethrough",
+          "blink",
+          "inverse",
+          "conceal",
+          "overline",
+          "double_underline"
+        ]
+      }
+    },
+    "variableStyle": {
+      "type": "object",
+      "description": "Style for variables",
+      "properties": {
+        "foreground": {
+          "$ref": "#/definitions/color"
+        },
+        "background": {
+          "$ref": "#/definitions/color"
+        },
+        "text": {
+          "$ref": "#/definitions/text"
+        }
+      }
+    },
+    "conditionOperator": {
       "type": "string",
       "enum": [
-        "bold",
-        "italic",
-        "underline",
-        "strikethrough",
-        "blink",
-        "inverse",
-        "conceal",
-        "crossed",
-        "overline",
-        "double_underline",
-        "double_strikethrough",
-        "double_blink",
-        "double_inverse",
-        "double_conceal",
-        "double_crossed",
-        "double_overline"
+        "eq",
+        "neq",
+        "lt",
+        "lte",
+        "gt",
+        "gte",
+        "regex",
+        "contains",
+        "in",
+        "exists"
+      ],
+      "description": "Operator used to compare a metadata field with a value"
+    },
+    "conditionValue": {
+      "oneOf": [
+        { "type": "string" },
+        { "type": "number" },
+        { "type": "boolean" },
+        { "type": "array", "items": {} }
       ]
-    }
-  },
-  "variableStyle": {
-    "type": "object",
-    "description": "Style for variables",
-    "properties": {
-      "foreground": {
-        "$ref": "#/definitions/color"
+    },
+    "condition": {
+      "type": "object",
+      "description": "A condition to match against file metadata",
+      "required": ["field", "op"],
+      "properties": {
+        "field": {
+          "type": "string",
+          "description": "Metadata field to test, e.g. 'name','kind','size','extension','owner','group','permissions','created','modified','accessed'"
+        },
+        "op": { "$ref": "#/definitions/conditionOperator" },
+        "value": { "$ref": "#/definitions/conditionValue" }
       },
-      "background": {
-        "$ref": "#/definitions/color"
+      "additionalProperties": false
+    },
+    "conditionalRule": {
+      "type": "object",
+      "required": ["when", "style"],
+      "properties": {
+        "when": {
+          "oneOf": [
+            { "$ref": "#/definitions/condition" },
+            {
+              "type": "array",
+              "items": { "$ref": "#/definitions/condition" },
+              "minItems": 1
+            }
+          ]
+        },
+        "style": { "$ref": "#/definitions/variableStyle" }
       },
-      "text": {
-        "$ref": "#/definitions/text"
-      }
+      "additionalProperties": false
+    },
+    "conditionalStyle": {
+      "type": "object",
+      "description": "Either a default style plus ordered rules, or just rules. Rules are evaluated in order; first match wins.",
+      "properties": {
+        "default": { "$ref": "#/definitions/variableStyle" },
+        "rules": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/conditionalRule" },
+          "minItems": 1
+        }
+      },
+      "additionalProperties": false
     }
   }
 }

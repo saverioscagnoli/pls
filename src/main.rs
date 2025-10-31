@@ -1,34 +1,35 @@
-mod args;
 mod commands;
 mod config;
-mod err;
+mod style;
 mod table;
 mod util;
 mod walk;
 
-use crate::{
-    args::{Args, Subcommand},
-    config::Config,
-};
+use crate::config::Config;
 use clap::Parser;
+use std::path::PathBuf;
+
+#[derive(Debug, Clone, Parser)]
+struct Args {
+    #[arg(index = 1, default_value = ".")]
+    path: PathBuf,
+
+    #[arg(short, long, default_value_t = false)]
+    all: bool,
+
+    #[arg(short, long, default_value_t = 1)]
+    depth: usize,
+}
 
 fn main() {
     let args = Args::parse();
-    let config = Config::parse().unwrap_or_else(|e| {
-        eprintln!("Warning: {}. Using default configuration.", e);
-        Config::default()
-    });
-
-    match args.subcommand {
-        Some(Subcommand::Find(args)) => {
-            println!("Finding pattern: {} in path: {:?}", args.pattern, args.root);
+    let config = match Config::parse() {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("Error parsing config: {}", e);
+            return;
         }
+    };
 
-        None => {
-            // Default to list behavior
-            if let Err(e) = commands::list::execute(&args.list, &config.ls) {
-                eprintln!("{}", e);
-            }
-        }
-    }
+    commands::list::execute(&args, &config.ls);
 }

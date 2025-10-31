@@ -1,5 +1,9 @@
-use crate::{commands::list::FileKind, err::PlsError, util};
-use serde::{Deserialize, de::DeserializeOwned};
+use crate::{
+    style::{ConditionalRule, FieldStyle, Op, VariableStyle},
+    util,
+};
+use figura::Value;
+use serde::Deserialize;
 use std::{
     collections::{HashMap, HashSet},
     str::FromStr,
@@ -8,11 +12,12 @@ use std::{
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ListVariable {
     Name,
+    Extension,
     Path,
     Kind,
-    Size,
-    Depth,
     Icon,
+    Depth,
+    Size,
     Permissions,
     Created,
     Modified,
@@ -22,28 +27,18 @@ pub enum ListVariable {
     NLink,
 }
 
-impl<'de> Deserialize<'de> for ListVariable {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let s: String = Deserialize::deserialize(deserializer)?;
-        ListVariable::from_str(&s)
-            .map_err(|_| serde::de::Error::custom(format!("invalid list variable: {}", s)))
-    }
-}
-
 impl FromStr for ListVariable {
     type Err = ();
 
-    fn from_str(input: &str) -> Result<ListVariable, Self::Err> {
-        match input {
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
             "name" => Ok(ListVariable::Name),
+            "extension" => Ok(ListVariable::Extension),
             "path" => Ok(ListVariable::Path),
-            "size" => Ok(ListVariable::Size),
             "kind" => Ok(ListVariable::Kind),
-            "depth" => Ok(ListVariable::Depth),
             "icon" => Ok(ListVariable::Icon),
+            "depth" => Ok(ListVariable::Depth),
+            "size" => Ok(ListVariable::Size),
             "permissions" => Ok(ListVariable::Permissions),
             "created" => Ok(ListVariable::Created),
             "modified" => Ok(ListVariable::Modified),
@@ -133,425 +128,148 @@ impl<'de> Deserialize<'de> for SizeUnit {
     }
 }
 
-pub trait Style {
-    fn apply<S: AsRef<str>>(&self, val: S) -> String;
-    fn reset() -> &'static str {
-        "\x1b[0m"
-    }
-}
-
 #[derive(Debug, Clone, Deserialize)]
-#[serde(untagged)]
-pub enum Color {
-    Named(String),   // "red", "blue", "green"
-    Rgb(u8, u8, u8), // RGB values
-    Hex(String),     // "#FF5733"
-    Ansi(u8),        // ANSI 256 color code
-}
-
-impl Default for Color {
-    fn default() -> Self {
-        Color::Named("white".to_string())
-    }
-}
-
-impl Color {
-    pub fn to_ansi(&self) -> String {
-        match self {
-            Color::Named(name) => match name.to_lowercase().as_str() {
-                "black" => "\x1b[30m".to_string(),
-                "red" => "\x1b[31m".to_string(),
-                "green" => "\x1b[32m".to_string(),
-                "yellow" => "\x1b[33m".to_string(),
-                "blue" => "\x1b[34m".to_string(),
-                "magenta" => "\x1b[35m".to_string(),
-                "cyan" => "\x1b[36m".to_string(),
-                "white" => "\x1b[37m".to_string(),
-                "bright_black" | "gray" => "\x1b[90m".to_string(),
-                "bright_red" => "\x1b[91m".to_string(),
-                "bright_green" => "\x1b[92m".to_string(),
-                "bright_yellow" => "\x1b[93m".to_string(),
-                "bright_blue" => "\x1b[94m".to_string(),
-                "bright_magenta" => "\x1b[95m".to_string(),
-                "bright_cyan" => "\x1b[96m".to_string(),
-                "bright_white" => "\x1b[97m".to_string(),
-                _ => String::new(),
-            },
-
-            Color::Rgb(r, g, b) => format!("\x1b[38;2;{};{};{}m", r, g, b),
-
-            Color::Hex(hex) => {
-                let hex = hex.trim_start_matches('#');
-
-                if hex.len() == 6 {
-                    if let (Ok(r), Ok(g), Ok(b)) = (
-                        u8::from_str_radix(&hex[0..2], 16),
-                        u8::from_str_radix(&hex[2..4], 16),
-                        u8::from_str_radix(&hex[4..6], 16),
-                    ) {
-                        return format!("\x1b[38;2;{};{};{}m", r, g, b);
-                    }
-                }
-                String::new()
-            }
-
-            Color::Ansi(code) => format!("\x1b[38;5;{}m", code),
-        }
-    }
-}
-
-impl Style for Color {
-    fn apply<S: AsRef<str>>(&self, val: S) -> String {
-        format!("{}{}{}", self.to_ansi(), val.as_ref(), Color::reset())
-    }
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub enum TextStyle {
-    Normal,
-    Bold,
-    Italic,
-    Underline,
-    StrikeThrough,
-    Blink,
-    Inverse,
-    Conceal,
-    CrossedOut,
-    DoubleUnderline,
-}
-
-impl Default for TextStyle {
-    fn default() -> Self {
-        TextStyle::Normal
-    }
-}
-
-impl TextStyle {
-    pub fn to_ansi(&self) -> &'static str {
-        match self {
-            TextStyle::Normal => "",
-            TextStyle::Bold => "\x1b[1m",
-            TextStyle::Italic => "\x1b[3m",
-            TextStyle::Underline => "\x1b[4m",
-            TextStyle::StrikeThrough => "\x1b[9m",
-            TextStyle::Blink => "\x1b[5m",
-            TextStyle::Inverse => "\x1b[7m",
-            TextStyle::Conceal => "\x1b[8m",
-            TextStyle::CrossedOut => "\x1b[9m",
-            TextStyle::DoubleUnderline => "\x1b[21m",
-        }
-    }
-
-    pub fn reset() -> &'static str {
-        "\x1b[0m"
-    }
-}
-
-impl Style for TextStyle {
-    fn apply<S: AsRef<str>>(&self, val: S) -> String {
-        let ansi = self.to_ansi();
-        format!("{}{}{}", ansi, val.as_ref(), TextStyle::reset())
-    }
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct ListIconConfig {
-    #[serde(default = "ListIconConfig::default_enabled")]
-    pub enabled: bool,
-
-    #[serde(default = "ListIconConfig::default_file_icon")]
-    pub file: String,
-
-    #[serde(default = "ListIconConfig::default_directory_icon")]
-    pub directory: String,
-
-    #[serde(default = "ListIconConfig::default_symlink_file_icon")]
-    pub symlink_file: String,
-
-    #[serde(default = "ListIconConfig::default_symlink_directory_icon")]
-    pub symlink_directory: String,
-
-    #[serde(default = "ListIconConfig::default_executable_icon")]
-    pub executable: String,
-
-    #[serde(default = "ListIconConfig::default_extensions_icons")]
-    pub extensions: HashMap<String, String>,
-}
-
-impl ListIconConfig {
-    pub fn default_enabled() -> bool {
-        true
-    }
-
-    pub fn default_file_icon() -> String {
-        String::from("󰈔")
-    }
-
-    pub fn default_directory_icon() -> String {
-        String::from("󰉋")
-    }
-
-    pub fn default_symlink_file_icon() -> String {
-        String::from("󰈕")
-    }
-
-    pub fn default_symlink_directory_icon() -> String {
-        String::from("󰉒")
-    }
-
-    pub fn default_executable_icon() -> String {
-        String::from("󰜢")
-    }
-
-    pub fn default_extensions_icons() -> HashMap<String, String> {
-        HashMap::new()
-    }
-}
-
-impl Default for ListIconConfig {
-    fn default() -> Self {
-        Self {
-            enabled: Self::default_enabled(),
-            file: Self::default_file_icon(),
-            directory: Self::default_directory_icon(),
-            symlink_file: Self::default_symlink_file_icon(),
-            symlink_directory: Self::default_symlink_directory_icon(),
-            executable: Self::default_executable_icon(),
-            extensions: Self::default_extensions_icons(),
-        }
-    }
-}
-
-/// Enum representing color configuration per-variable,
-/// so for example you could wanted to color the "name" variable based
-/// on file type or extension,
-#[derive(Debug, Clone, Deserialize)]
-#[serde(untagged)]
-pub enum VariableStyleConfig<T: Default> {
-    /// This will apply the said color to all instances
-    /// of the variable across the listing.
-    Simple(T),
-
-    Complex {
-        /// Color applied based on the entry kind.
-        #[serde(default)]
-        kinds: HashMap<FileKind, T>,
-
-        /// Color applied based on the file extension.
-        #[serde(default)]
-        extensions: HashMap<String, T>,
-
-        /// The fallback color if no other rule matches.
-        /// The default color is white
-        #[serde(default)]
-        default: T,
-    },
-}
-
-impl<T: Default> VariableStyleConfig<T> {
-    pub fn resolve_style(&self, kind: &FileKind, extension: Option<&str>) -> &T {
-        match self {
-            VariableStyleConfig::Simple(t) => t,
-            VariableStyleConfig::Complex {
-                kinds,
-                extensions,
-                default,
-            } => {
-                // First try to match by extension if provided
-                if let Some(ext) = extension {
-                    if let Some(t) = extensions.get(ext) {
-                        return t;
-                    }
-                }
-
-                if let Some(t) = kinds.get(&kind) {
-                    return t;
-                }
-
-                default
-            }
-        }
-    }
-}
-
-#[derive(Debug, Clone, Default, Deserialize)]
-pub struct StyleConfig<T: Default + Style> {
-    #[serde(default)]
-    pub enabled: bool,
-
-    #[serde(default, flatten)]
-    pub variables: HashMap<ListVariable, VariableStyleConfig<T>>,
-}
-
-impl<T: Default + Style> StyleConfig<T> {
-    pub fn apply_style(
-        &self,
-        kind: &FileKind,
-        ext: Option<&str>,
-        var: &ListVariable,
-        value: String,
-    ) -> String {
-        if !self.enabled {
-            return value;
-        }
-
-        if let Some(conf) = self.variables.get(var) {
-            let style = conf.resolve_style(kind, ext);
-            return style.apply(value);
-        }
-
-        value
-    }
-}
-
-#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
 pub struct ListConfig {
-    #[serde(default = "ListConfig::default_format")]
     pub format: Vec<String>,
-
-    #[serde(default = "ListConfig::default_padding")]
     pub padding: usize,
-
-    #[serde(default = "ListConfig::default_headers")]
-    pub headers: Vec<String>,
-
-    #[serde(default = "ListConfig::default_accessed_format")]
-    pub accessed_format: String,
-
-    #[serde(default = "ListConfig::default_modified_format")]
-    pub modified_format: String,
-
-    #[serde(default = "ListConfig::default_created_format")]
-    pub created_format: String,
-
-    #[serde(default)]
+    pub style: HashMap<String, FieldStyle>,
     pub size_unit: SizeUnit,
-
-    #[serde(default)]
-    pub icons: ListIconConfig,
-
-    #[serde(default)]
-    pub colors: StyleConfig<Color>,
-
-    #[serde(default)]
-    pub text: StyleConfig<TextStyle>,
-}
-
-impl ListConfig {
-    pub fn default_format() -> Vec<String> {
-        vec![
-            String::from("{kind}"),
-            String::from("{name}"),
-            String::from("{size}"),
-            String::from("{modified}"),
-        ]
-    }
-
-    pub fn default_padding() -> usize {
-        2
-    }
-
-    pub fn default_headers() -> Vec<String> {
-        Vec::new()
-    }
-
-    pub fn default_accessed_format() -> String {
-        String::from("%Y-%m-%d %H:%M")
-    }
-
-    pub fn default_modified_format() -> String {
-        String::from("%Y-%m-%d %H:%M")
-    }
-
-    pub fn default_created_format() -> String {
-        String::from("%Y-%m-%d %H:%M")
-    }
-
-    pub fn list_variables(&self) -> Vec<ListVariable> {
-        let mut stripped = String::new();
-
-        for t in &self.format {
-            stripped.push_str(util::keep_ascii_letters_and_whitespace(t).as_str());
-            stripped.push(' ');
-        }
-
-        stripped
-            .split_whitespace()
-            .filter_map(|var| ListVariable::from_str(var).ok())
-            .collect::<HashSet<_>>()
-            .into_iter()
-            .collect()
-    }
 }
 
 impl Default for ListConfig {
     fn default() -> Self {
         Self {
-            format: Self::default_format(),
-            padding: Self::default_padding(),
-            headers: Self::default_headers(),
-            accessed_format: Self::default_accessed_format(),
-            modified_format: Self::default_modified_format(),
-            created_format: Self::default_created_format(),
-            size_unit: SizeUnit::default(),
-            icons: ListIconConfig::default(),
-            colors: StyleConfig::default(),
+            format: vec![
+                String::from("{kind}"),
+                String::from("{name}"),
+                String::from("{permissions}"),
+                String::from("{size}"),
+                String::from("{modified}"),
+            ],
+            padding: 2,
+            style: HashMap::new(),
+            size_unit: SizeUnit::Auto,
+        }
+    }
+}
+
+impl ListConfig {
+    /// Returns a set of format variables parsed from the format strings.
+    /// This is used so that we can know which metadata to fetch for each file.
+    pub fn format_variables(&self) -> HashSet<ListVariable> {
+        let mut stripped = String::new();
+
+        for t in &self.format {
+            stripped.push_str(&util::keep_letters_whitespace(&t));
+            stripped.push(' ');
+        }
+
+        stripped
+            .split_whitespace()
+            .filter_map(|s| ListVariable::from_str(s).ok())
+            .collect()
+    }
+
+    pub fn apply_field_style(
+        &self,
+        field_name: &str,
+        value: &str,
+        ctx: &HashMap<&'static str, Value>,
+    ) -> String {
+        if let Some(field_style) = self.style.get(field_name) {
+            // Evaluate conditions
+            for rule in &field_style.conditions {
+                if self.evaluate_condition(rule, ctx) {
+                    return rule.style.apply(value);
+                }
+            }
+
+            // Fall back to default if no condition matches
+            if let Some(default_style) = &field_style.default {
+                return default_style.apply(value);
+            }
+        }
+
+        // No styling applied
+        value.to_string()
+    }
+
+    /// Evaluate a conditional rule
+    fn evaluate_condition(
+        &self,
+        rule: &ConditionalRule,
+        ctx: &HashMap<&'static str, Value>,
+    ) -> bool {
+        let var_value = match ctx.get(rule.variable.as_str()) {
+            Some(v) => v.to_string(),
+            None => return false,
+        };
+
+        match rule.op {
+            Op::Equal => var_value == rule.value,
+            Op::Greater => {
+                if let (Ok(a), Ok(b)) = (var_value.parse::<i64>(), rule.value.parse::<i64>()) {
+                    a > b
+                } else {
+                    var_value > rule.value
+                }
+            }
+            Op::Less => {
+                if let (Ok(a), Ok(b)) = (var_value.parse::<i64>(), rule.value.parse::<i64>()) {
+                    a < b
+                } else {
+                    var_value < rule.value
+                }
+            }
+            Op::GreaterEqual => {
+                if let (Ok(a), Ok(b)) = (var_value.parse::<i64>(), rule.value.parse::<i64>()) {
+                    a >= b
+                } else {
+                    var_value >= rule.value
+                }
+            }
+            Op::LessEqual => {
+                if let (Ok(a), Ok(b)) = (var_value.parse::<i64>(), rule.value.parse::<i64>()) {
+                    a <= b
+                } else {
+                    var_value <= rule.value
+                }
+            }
         }
     }
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[serde(default)]
 pub struct Config {
+    #[serde(default)]
     pub ls: ListConfig,
 }
 
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            ls: ListConfig::default(),
-        }
-    }
-}
-
 impl Config {
-    pub fn parse() -> Result<Self, PlsError> {
+    const SCHEMA: &str = include_str!("../config.schema.json");
+    const DEFAULT: &str = include_str!("../config.default.json");
+
+    pub fn parse() -> Result<Self, Box<dyn std::error::Error>> {
         let config_dir = dirs::config_dir()
-            .ok_or_else(|| PlsError::ConfigNotFound)?
+            .ok_or("Could not determine config directory")?
             .join("pls");
 
-        let possble_paths = &[
-            config_dir.join("config.toml"),
-            config_dir.join("config.json"),
-            config_dir.join("config.jsonc"),
-            config_dir.join("config.json5"),
-            config_dir.join("config.yaml"),
-        ];
+        let schema_file = config_dir.join("config.schema.json");
+        let config_file = config_dir.join("config.json");
 
-        let path = possble_paths
-            .iter()
-            .find(|p| p.exists())
-            .ok_or_else(|| PlsError::ConfigNotFound)?;
+        std::fs::create_dir_all(&config_dir)?;
 
-        let content = std::fs::read_to_string(path)?;
-        let config: Config =
-            match path.extension().and_then(|s| s.to_str()) {
-                Some("toml") => {
-                    toml::from_str(&content).map_err(|e| PlsError::ParsingError(e.to_string()))?
-                }
+        if !schema_file.exists() {
+            std::fs::write(&schema_file, Self::SCHEMA)?;
+        }
 
-                Some("json") => serde_json::from_str(&content)
-                    .map_err(|e| PlsError::ParsingError(e.to_string()))?,
+        if !config_file.exists() {
+            std::fs::write(&config_file, Self::DEFAULT)?;
+        }
 
-                Some("jsonc") | Some("json5") => {
-                    json5::from_str(&content).map_err(|e| PlsError::ParsingError(e.to_string()))?
-                }
-
-                Some("yaml") | Some("yml") => serde_yaml::from_str(&content)
-                    .map_err(|e| PlsError::ParsingError(e.to_string()))?,
-
-                _ => return Err(PlsError::ConfigNotFound),
-            };
+        let config_content = std::fs::read_to_string(&config_file)?;
+        let config: Config = serde_json::from_str(&config_content)?;
 
         Ok(config)
     }

@@ -1,19 +1,21 @@
-use crate::args::ListArgs;
-use crate::config::{ListConfig, ListVariable};
-use crate::err::PlsError;
-use crate::table::Table;
-use crate::util;
-use crate::walk::DirWalk;
+use crate::{
+    Args,
+    config::{ListConfig, ListVariable},
+    style::{self},
+    table::Table,
+    util,
+    walk::DirWalker,
+};
 use chrono::{DateTime, Local};
 use figura::{Template, Value};
 use serde::Deserialize;
-use std::cmp::Ordering;
-use std::collections::HashMap;
-use std::fmt::Display;
-use std::fs::Metadata;
-use std::io::Write;
-use std::os::unix::fs::{MetadataExt, PermissionsExt};
-use std::path::Path;
+use std::{
+    collections::HashMap,
+    fmt::Display,
+    fs::Metadata,
+    os::unix::fs::{MetadataExt, PermissionsExt},
+    path::Path,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FileKind {
@@ -81,216 +83,119 @@ impl FileKind {
     }
 }
 
-pub fn execute(args: &ListArgs, config: &ListConfig) -> Result<(), PlsError> {
-    let stdout = std::io::stdout();
-    let mut handle = stdout.lock();
-    let used_variables = config.list_variables();
-    let mut context = HashMap::new();
-    let mut table = Table::new().padding(config.padding);
-
-    if !config.headers.is_empty() {
-        table.add_headers(config.headers.as_slice());
-    }
-
-    let mut row = Vec::new();
-
+pub fn execute(args: &Args, config: &ListConfig) {
     let templates = config
         .format
         .iter()
-        .map(|t| Template::<'{', '}'>::parse(t))
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| PlsError::ParsingError(format!("Template parsing error: {}", e)))?;
+        .filter_map(|s| Template::<'{', '}'>::parse(s).ok())
+        .collect::<Vec<_>>();
 
-    for (entry, i) in DirWalk::new(&args.path)
-        .skip_hidden(!args.all)
+    let mut context = HashMap::new();
+    let mut styled_context = HashMap::new();
+    let mut table = Table::new().padding(config.padding);
+    let mut row = Vec::new();
+
+    for (entry, depth) in DirWalker::new(&args.path)
         .max_depth(args.depth)
-        .sort_by(|a, b| {
-            // Sort directories first, then files, then symlinks
-            let a_is_dir = a.file_type().map(|ft| ft.is_dir()).unwrap_or(false);
-            let b_is_dir = b.file_type().map(|ft| ft.is_dir()).unwrap_or(false);
-
-            match (a_is_dir, b_is_dir) {
-                (true, false) => Ordering::Less,
-                (false, true) => Ordering::Greater,
-                _ => a.file_name().cmp(&b.file_name()),
-            }
-        })
+        .skip_hidden(!args.all)
     {
-        let name = entry.file_name();
-        let hidden = name.to_string_lossy().starts_with('.');
-
-        if !args.all && hidden {
-            continue;
-        }
-
         let path = entry.path();
-        let ext = path.extension().and_then(|e| e.to_str());
         let (kind, metadata) = FileKind::from_path(&path);
 
-        for var in &used_variables {
-            match var {
-                ListVariable::Name => {
-                    let value = name.to_string_lossy().to_string();
-                    let mut colored = config.colors.apply_style(&kind, ext, var, value);
+        let name = entry.file_name().to_string_lossy().to_string();
+        let extension = path
+            .extension()
+            .and_then(|s| s.to_str())
+            .map(|s| s.to_string());
+        let path = path.to_string_lossy().to_string();
+        let icon = "f".to_string();
+        let size = metadata.len();
+        let permissions = util::permissions_to_string(metadata.mode());
+        let created = metadata
+            .created()
+            .map(|t| {
+                let dt: DateTime<Local> = t.into();
+                dt.format("%Y-%m-%d %H:%M:%S").to_string()
+            })
+            .unwrap_or_else(|_| "N/A".to_string());
 
-                    if args.all && !hidden {
-                        colored.insert(0, ' ');
-                    }
+        let modified = metadata
+            .modified()
+            .map(|t| {
+                let dt: DateTime<Local> = t.into();
+                dt.format("%Y-%m-%d %H:%M:%S").to_string()
+            })
+            .unwrap_or_else(|_| "N/A".to_string());
 
-                    context.insert("name", Value::String(colored));
-                }
-                ListVariable::Path => {
-                    let value = path.to_string_lossy().to_string();
-                    let colored = config.colors.apply_style(&kind, ext, var, value);
+        let accessed = metadata
+            .accessed()
+            .map(|t| {
+                let dt: DateTime<Local> = t.into();
+                dt.format("%Y-%m-%d %H:%M:%S").to_string()
+            })
+            .unwrap_or_else(|_| "N/A".to_string());
 
-                    context.insert("path", Value::String(colored));
-                }
+        let owner = users::get_user_by_uid(metadata.uid())
+            .map(|u| u.name().to_string_lossy().to_string())
+            .unwrap_or_else(|| metadata.uid().to_string());
 
-                ListVariable::Kind => {
-                    let value = kind.to_string();
-                    let colored = config.colors.apply_style(&kind, ext, var, value);
-                    context.insert("kind", Value::String(colored));
-                }
+        let group = users::get_group_by_gid(metadata.gid())
+            .map(|g| g.name().to_string_lossy().to_string())
+            .unwrap_or_else(|| metadata.gid().to_string());
 
-                ListVariable::Size => {
-                    let value = config.size_unit.format_bytes(metadata.len());
-                    let colored = config.colors.apply_style(&kind, ext, var, value);
-                    context.insert("size", Value::String(colored));
-                }
+        let nlink = metadata.nlink();
 
-                ListVariable::Depth => {
-                    context.insert("depth", Value::Int(i as i64));
-                }
+        context.insert("name", Value::String(name.clone()));
+        context.insert(
+            "extension",
+            figura::Value::String(extension.unwrap_or("".to_string())),
+        );
+        context.insert("path", Value::String(path.clone()));
+        context.insert("kind", Value::String(kind.to_string()));
+        context.insert("icon", Value::String(icon));
+        context.insert("depth", Value::Int(depth as i64));
+        context.insert("size", Value::Int(size as i64));
+        context.insert("permissions", Value::String(permissions.clone()));
+        context.insert("created", Value::String(created.clone()));
+        context.insert("modified", Value::String(modified.clone()));
+        context.insert("accessed", Value::String(accessed.clone()));
+        context.insert("owner", Value::String(owner.clone()));
+        context.insert("group", Value::String(group.clone()));
+        context.insert("nlink", Value::Int(nlink as i64));
 
-                ListVariable::Icon => {
-                    if config.icons.enabled {
-                        let icon = match kind {
-                            FileKind::File => config
-                                .icons
-                                .extensions
-                                .get(ext.unwrap_or(""))
-                                .unwrap_or(&config.icons.file),
-                            FileKind::Directory => &config.icons.directory,
-                            FileKind::SymlinkFile => &config.icons.symlink_file,
-                            FileKind::SymlinkDirectory => &config.icons.symlink_directory,
-                            FileKind::Executable => &config.icons.executable,
-                        };
+        let name = config.apply_field_style("name", &name, &context);
+        let path = config.apply_field_style("path", &path, &context);
+        let kind = config.apply_field_style("kind", &kind.to_string(), &context);
+        let icon = config.apply_field_style("icon", "f", &context);
+        let size_str = config.apply_field_style(
+            "size",
+            &config.size_unit.format_bytes(size),
+            &styled_context,
+        );
+        let permissions = config.apply_field_style("permissions", &permissions, &context);
+        let created = config.apply_field_style("created", &created, &context);
+        let modified = config.apply_field_style("modified", &modified, &context);
+        let accessed = config.apply_field_style("accessed", &accessed, &context);
+        let owner = config.apply_field_style("owner", &owner, &context);
+        let group = config.apply_field_style("group", &group, &context);
+        let nlink = config.apply_field_style("nlink", &nlink.to_string(), &context);
 
-                        let colored = config.colors.apply_style(&kind, ext, var, icon.to_string());
-
-                        context.insert("icon", Value::String(colored));
-                    }
-                }
-
-                ListVariable::Permissions => {
-                    let value = util::permissions_to_string(metadata.mode());
-                    let colored = config.colors.apply_style(&kind, ext, var, value);
-                    context.insert("permissions", Value::String(colored));
-                }
-
-                ListVariable::Created => {
-                    if let Ok(ctime) = metadata.created() {
-                        let date = DateTime::<Local>::from(ctime)
-                            .format(&config.created_format)
-                            .to_string();
-                        let colored = config.colors.apply_style(&kind, ext, var, date);
-
-                        context.insert("created", Value::String(colored));
-                    } else {
-                        context.insert("created", Value::Str("N/A"));
-                    }
-                }
-
-                ListVariable::Modified => {
-                    if let Ok(mtime) = metadata.modified() {
-                        let date = DateTime::<Local>::from(mtime)
-                            .format(&config.modified_format)
-                            .to_string();
-                        let colored = config.colors.apply_style(&kind, ext, var, date);
-
-                        context.insert("modified", Value::String(colored));
-                    } else {
-                        context.insert("modified", Value::Str("N/A"));
-                    }
-                }
-
-                ListVariable::Accessed => {
-                    if let Ok(atime) = metadata.accessed() {
-                        let date = DateTime::<Local>::from(atime)
-                            .format(&config.accessed_format)
-                            .to_string();
-                        let colored = config.colors.apply_style(&kind, ext, var, date);
-
-                        context.insert("accessed", Value::String(colored));
-                    } else {
-                        context.insert("accessed", Value::Str("N/A"));
-                    }
-                }
-
-                ListVariable::Owner => {
-                    #[cfg(target_family = "unix")]
-                    {
-                        use users::get_user_by_uid;
-
-                        let uid = metadata.uid();
-
-                        if let Some(user) = get_user_by_uid(uid) {
-                            let value = user.name().to_string_lossy().to_string();
-                            let colored = config.colors.apply_style(&kind, ext, var, value);
-
-                            context.insert("owner", Value::String(colored));
-                        } else {
-                            context.insert("owner", Value::Str("N/A"));
-                        }
-                    }
-
-                    #[cfg(not(target_family = "unix"))]
-                    {
-                        context.insert("owner", Value::Str("N/A"));
-                    }
-                }
-
-                ListVariable::Group => {
-                    #[cfg(target_family = "unix")]
-                    {
-                        use users::get_group_by_gid;
-
-                        let gid = metadata.gid();
-
-                        if let Some(group) = get_group_by_gid(gid) {
-                            let value = group.name().to_string_lossy().to_string();
-                            let colored = config.colors.apply_style(&kind, ext, var, value);
-
-                            context.insert("group", Value::String(colored));
-                        } else {
-                            context.insert("group", Value::Str("N/A"));
-                        }
-                    }
-
-                    #[cfg(not(target_family = "unix"))]
-                    {
-                        context.insert("group", Value::Str("N/A"));
-                    }
-                }
-
-                ListVariable::NLink => {
-                    let value = metadata.nlink().to_string();
-                    let colored = config.colors.apply_style(&kind, ext, var, value);
-
-                    context.insert("nlink", Value::String(colored));
-                }
-            }
-        }
+        styled_context.insert("name", Value::String(name));
+        styled_context.insert("path", Value::String(path));
+        styled_context.insert("kind", Value::String(kind));
+        styled_context.insert("icon", Value::String(icon));
+        styled_context.insert("size", Value::String(size_str));
+        styled_context.insert("permissions", Value::String(permissions));
+        styled_context.insert("created", Value::String(created));
+        styled_context.insert("modified", Value::String(modified));
+        styled_context.insert("accessed", Value::String(accessed));
+        styled_context.insert("owner", Value::String(owner));
+        styled_context.insert("group", Value::String(group));
+        styled_context.insert("nlink", Value::String(nlink));
 
         for t in &templates {
-            match t.format(&context) {
-                Ok(formatted) => {
-                    row.push((formatted, t.alignment()));
-                }
-                Err(e) => {
-                    writeln!(handle, "{}", e)?;
-                    continue;
-                }
+            if let Ok(output) = t.format(&styled_context) {
+                row.push((output, t.alignment()));
             }
         }
 
@@ -298,10 +203,8 @@ pub fn execute(args: &ListArgs, config: &ListConfig) -> Result<(), PlsError> {
 
         row.clear();
         context.clear();
+        styled_context.clear();
     }
 
-    writeln!(handle, "total: {}", table.rows().len())?;
-    writeln!(handle, "{}", table)?;
-
-    Ok(())
+    println!("{}", table);
 }
