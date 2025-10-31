@@ -12,14 +12,7 @@
         "format": {
           "type": "array",
           "description": "The output format order using template variables like {name}, {kind}, etc.",
-          "items": { "type": "string" },
-          "default": [
-            "{kind}",
-            "{name}",
-            "{permissions}",
-            "{size}",
-            "{modified}"
-          ]
+          "items": { "type": "string" }
         },
         "padding": {
           "type": "integer",

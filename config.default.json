@@ -5,7 +5,8 @@
       "{ :depth}{icon} {name}",
       "{permissions}",
       "{size>}",
-      "{modified^}"
+      "{modified^}",
+      "\u001B[33m-> {nlink}\u001B[0m"
     ],
     "styles": {
       "name": {
@@ -46,6 +47,16 @@
       "permissions": {
         "default": {
           "foreground": "gray"
+        }
+      },
+      "modified": {
+        "default": {
+          "foreground": "gray"
+        }
+      },
+      "nlink": {
+        "default": {
+          "text": ["bold"]
         }
       }
     }
