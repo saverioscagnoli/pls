@@ -1,7 +1,10 @@
-use crate::FindArgs;
-use crate::walk::ThreadedWalk;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+
+use crate::FindArgs;
+use crate::config::{Apply, Color, Style};
+use crate::walk::ThreadedWalk;
 use std::io::Write;
+use std::path::Path;
 use std::time::Instant;
 
 pub fn execute(args: &FindArgs) {
@@ -20,6 +23,18 @@ pub fn execute(args: &FindArgs) {
         .follow_symlinks(args.follow_symlinks)
         .collect();
 
+    let green_style = Style {
+        foreground: Some(Color::Named("green".to_string())),
+        background: None,
+        text: None,
+    };
+
+    let red_style = Style {
+        foreground: Some(Color::Named("red".to_string())),
+        background: None,
+        text: None,
+    };
+
     let buffer: Vec<_> = paths
         .par_iter()
         .filter_map(|(path, _)| {
@@ -32,7 +47,20 @@ pub fn execute(args: &FindArgs) {
                         n.contains(&args.pattern)
                     }
                 })
-                .map(|_| path.to_string_lossy())
+                .map(|_| {
+                    let filename = path.file_name().unwrap().to_string_lossy();
+                    let parent = path.parent().unwrap_or(Path::new(""));
+
+                    let colored_dir = if parent.as_os_str().is_empty() {
+                        String::new()
+                    } else {
+                        green_style.apply(Some(parent.to_string_lossy().to_string() + "/"))
+                    };
+
+                    let colored_name = red_style.apply(Some(filename.to_string()));
+
+                    format!("{}{}", colored_dir, colored_name)
+                })
         })
         .collect();
 
