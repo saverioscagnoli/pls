@@ -6,7 +6,7 @@ mod walk;
 
 use crate::config::Config;
 use clap::{Parser, Subcommand};
-use std::path::PathBuf;
+use std::{path::PathBuf, usize};
 
 #[derive(Debug, Clone, Parser)]
 pub struct FindArgs {
@@ -32,9 +32,22 @@ pub struct FindArgs {
     timed: bool,
 }
 
+#[derive(Debug, Clone, Parser)]
+pub struct SizeArgs {
+    #[arg(index = 1)]
+    path: PathBuf,
+
+    #[arg(short, long, default_value_t = false)]
+    all: bool,
+
+    #[arg(short, long, default_value_t = usize::MAX)]
+    depth: usize,
+}
+
 #[derive(Debug, Clone, Subcommand)]
 enum Command {
     Find(FindArgs),
+    Size(SizeArgs),
 }
 
 #[derive(Debug, Clone, Parser)]
@@ -70,6 +83,7 @@ fn main() {
 
     match args.subcommand {
         Some(Command::Find(args)) => commands::find::execute(&args),
+        Some(Command::Size(args)) => commands::size::execute(&args),
         _ => commands::list::execute(&args, &config.ls),
     }
 }
