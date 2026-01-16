@@ -1,290 +1,108 @@
-use crossbeam::channel::{Receiver, Sender};
-use rayon::iter::{IntoParallelIterator, ParallelBridge, ParallelIterator};
 use std::{
-    cmp::Ordering,
-    fs::{DirEntry, ReadDir},
+    collections::VecDeque,
+    fs,
     path::{Path, PathBuf},
 };
 
 #[derive(Debug, Clone)]
 pub struct WalkOptions {
-    max_depth: usize,
-    skip_hidden: bool,
-    follow_symlinks: bool,
-    sort_by: Option<fn(&DirEntry, &DirEntry) -> Ordering>,
+    pub root: PathBuf,
+    pub all: bool,
+    pub max_depth: usize,
+    pub follow_symlinks: bool,
+    pub threads: usize,
 }
 
 impl Default for WalkOptions {
     fn default() -> Self {
         Self {
-            max_depth: usize::MAX,
-            skip_hidden: true,
+            root: PathBuf::from("."),
+            all: false,
+            max_depth: 1,
             follow_symlinks: false,
-            sort_by: None,
+            threads: 0,
         }
     }
 }
 
 #[derive(Debug)]
-enum StackItem {
-    ReadDir(ReadDir, usize),
-    Entries(Vec<DirEntry>, usize, usize), // entries, depth, index
-}
-
-#[derive(Debug)]
-pub struct DirWalker {
-    stack: Vec<StackItem>,
+#[derive(Default)]
+pub struct Walk {
+    queue: VecDeque<fs::ReadDir>,
     options: WalkOptions,
 }
 
-impl DirWalker {
-    pub fn new<P: AsRef<Path>>(path: P) -> Self {
-        let rd = std::fs::read_dir(&path).expect("Root directory should be valid");
-        Self {
-            stack: vec![StackItem::ReadDir(rd, 1)],
-            options: WalkOptions::default(),
-        }
-    }
-
-    pub fn skip_hidden(mut self, skip: bool) -> Self {
-        self.options.skip_hidden = skip;
+impl Walk {
+    pub fn root<P: AsRef<Path>>(mut self, root: P) -> Self {
+        self.options.root = root.as_ref().to_path_buf();
         self
     }
 
-    pub fn max_depth(mut self, depth: usize) -> Self {
-        self.options.max_depth = depth;
+    pub fn all(mut self, v: bool) -> Self {
+        self.options.all = v;
         self
     }
 
-    pub fn follow_symlinks(mut self, follow: bool) -> Self {
-        self.options.follow_symlinks = follow;
+    pub fn max_depth(mut self, v: usize) -> Self {
+        self.options.max_depth = v;
         self
     }
 
-    pub fn sort_by(mut self, sort_fn: fn(&DirEntry, &DirEntry) -> Ordering) -> Self {
-        self.options.sort_by = Some(sort_fn);
+    pub fn follow_symlinks(mut self, v: bool) -> Self {
+        self.options.follow_symlinks = v;
+        self
+    }
+
+    pub fn threads(mut self, v: usize) -> Self {
+        self.options.threads = v;
         self
     }
 }
 
-impl Iterator for DirWalker {
-    type Item = (DirEntry, usize);
+// BFS search https://en.wikipedia.org/wiki/Breadth-first_search#Pseudocode
+// 1  procedure BFS(G, root) is
+// 2      let Q be a queue
+// 3      label root as explored
+// 4      Q.enqueue(root)
+// 5      while Q is not empty do
+// 6          v := Q.dequeue()
+// 7          if v is the goal then
+// 8              return v
+// 9          for all edges from v to w in G.adjacentEdges(v) do
+// 10              if w is not labeled as explored then
+// 11                  label w as explored
+// 12                  w.parent := v
+// 13                  Q.enqueue(w)
 
-    fn next(&mut self) -> Option<Self::Item> {
-        while let Some(item) = self.stack.last_mut() {
-            match item {
-                StackItem::ReadDir(rd, depth) => {
-                    let depth = *depth;
+impl Walk {
+    pub fn bfs(&mut self, mut f: impl FnMut(&fs::DirEntry)) {
+        let root = match fs::read_dir(&self.options.root) {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("Error reading {}: {}", self.options.root.display(), e);
+                return;
+            }
+        };
 
-                    if self.options.sort_by.is_some() {
-                        // Need to sort, so collect all entries
-                        let rd = std::mem::replace(rd, std::fs::read_dir(".").unwrap());
-                        let mut entries: Vec<DirEntry> =
-                            rd.filter_map(|entry| entry.ok()).collect();
+        self.queue.push_back(root);
 
-                        if let Some(sort_fn) = self.options.sort_by {
-                            entries.sort_by(sort_fn);
-                        }
+        while let Some(rd) = self.queue.pop_front() {
+            for entry in rd.filter_map(Result::ok) {
+                f(&entry);
 
-                        self.stack.pop();
+                let Ok(ft) = entry.file_type() else {
+                    continue;
+                };
 
-                        if !entries.is_empty() {
-                            self.stack.push(StackItem::Entries(entries, depth, 0));
-                        }
-
-                        continue;
-                    }
-
-                    // No sorting needed, use ReadDir directly
-                    let Some(rd_result) = rd.next() else {
-                        self.stack.pop();
-                        continue;
-                    };
-
-                    let Ok(e) = rd_result else {
-                        continue;
-                    };
-
-                    let Ok(ft) = e.file_type() else {
+                if ft.is_dir() {
+                    let Ok(sub_rd) = fs::read_dir(&entry.path()) else {
                         continue;
                     };
 
-                    if let Some(name) = e.file_name().to_str() {
-                        if self.options.skip_hidden && name.starts_with('.') {
-                            continue;
-                        }
-                    }
-
-                    if ft.is_dir() && depth + 1 <= self.options.max_depth {
-                        // Only follow symlinks if the option is set
-                        if !ft.is_symlink() || self.options.follow_symlinks {
-                            if let Ok(subrd) = std::fs::read_dir(&e.path()) {
-                                self.stack.push(StackItem::ReadDir(subrd, depth + 1));
-                            }
-                        }
-                    }
-
-                    return Some((e, depth));
-                }
-
-                StackItem::Entries(entries, depth, index) => {
-                    let depth = *depth;
-                    let index = *index;
-
-                    if index >= entries.len() {
-                        self.stack.pop();
-                        continue;
-                    }
-
-                    let entry = if entries.is_empty() {
-                        self.stack.pop();
-                        continue;
-                    } else {
-                        // Always take the first element to maintain sorted order
-                        entries.remove(0)
-                    };
-
-                    let Ok(ft) = entry.file_type() else {
-                        eprintln!("cannot get ft for {}", entry.path().display());
-                        continue;
-                    };
-
-                    if let Some(name) = entry.file_name().to_str() {
-                        if self.options.skip_hidden && name.starts_with('.') {
-                            continue;
-                        }
-                    }
-
-                    if ft.is_dir() && depth + 1 <= self.options.max_depth {
-                        if let Ok(subrd) = std::fs::read_dir(&entry.path()) {
-                            self.stack.push(StackItem::ReadDir(subrd, depth + 1));
-                        }
-                    }
-
-                    return Some((entry, depth));
+                    self.queue.push_back(sub_rd);
+                    continue;
                 }
             }
         }
-        None
-    }
-}
-
-pub struct ThreadedWalk {
-    rx: Option<Receiver<(PathBuf, usize)>>,
-    path: PathBuf,
-    options: WalkOptions,
-    started: bool,
-}
-
-impl ThreadedWalk {
-    pub fn new<P: AsRef<Path>>(path: P) -> Self {
-        ThreadedWalk {
-            rx: None,
-            path: path.as_ref().to_path_buf(),
-            options: WalkOptions::default(),
-            started: false,
-        }
-    }
-
-    pub fn skip_hidden(mut self, skip: bool) -> Self {
-        self.options.skip_hidden = skip;
-        self
-    }
-
-    pub fn max_depth(mut self, depth: usize) -> Self {
-        self.options.max_depth = depth;
-        self
-    }
-
-    pub fn follow_symlinks(mut self, follow: bool) -> Self {
-        self.options.follow_symlinks = follow;
-        self
-    }
-
-    fn start(&mut self) {
-        if self.started {
-            return;
-        }
-
-        let (tx, rx) = crossbeam::channel::unbounded();
-        let path = self.path.clone();
-        let options = self.options.clone();
-
-        rayon::spawn(move || {
-            Self::walk(path, &tx, false, &options, 1);
-        });
-
-        self.rx = Some(rx);
-        self.started = true;
-    }
-
-    fn walk(
-        path: PathBuf,
-        tx: &Sender<(PathBuf, usize)>,
-        is_file: bool,
-        options: &WalkOptions,
-        depth: usize,
-    ) {
-        // Check if the maximum depth has been reached
-        if depth > options.max_depth {
-            return;
-        }
-
-        // Duplicate the sender.send function
-        // to avoid cloning the path, which can improve performance
-        if is_file {
-            // If this is a file, just send the path and return
-            let _ = tx.send((path, depth));
-            return;
-        }
-
-        let Ok(entries) = std::fs::read_dir(&path) else {
-            let _ = tx.send((path, depth));
-            return;
-        };
-
-        // If this point is reached, it means we are processing a directory
-        // Send the directory path and depth
-        let _ = tx.send((path, depth));
-
-        // Separate into files and directories
-        entries
-            .par_bridge()
-            .into_par_iter()
-            .filter_map(|e| e.ok())
-            .for_each(|entry| {
-                if let Some(name) = entry.file_name().to_str() {
-                    if name.starts_with('.') && options.skip_hidden {
-                        return;
-                    }
-                }
-
-                let path = entry.path();
-
-                match entry.file_type() {
-                    Ok(ft) if ft.is_dir() => {
-                        if options.follow_symlinks || !ft.is_symlink() {
-                            // If it's a directory, recursively walk it
-                            Self::walk(path, tx, false, options, depth + 1);
-                        }
-                    }
-
-                    Ok(ft) if ft.is_file() => {
-                        // If it's a file, send the path
-                        let _ = tx.send((path, depth));
-                    }
-
-                    _ => {}
-                }
-            });
-    }
-}
-
-impl Iterator for ThreadedWalk {
-    type Item = (PathBuf, usize);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.start();
-        self.rx.as_ref().and_then(|rx| rx.recv().ok())
     }
 }
