@@ -1,21 +1,28 @@
+#![warn(clippy::use_self)]
+
 mod args;
 mod commands;
+mod config;
+mod consts;
+mod table;
+mod util;
 mod walk;
 
-use crate::args::{Args, SubCommand};
+use crate::{
+    args::{Args, Command, ConfigCommand},
+    config::{LsConfig, Parse},
+};
 use clap::Parser;
 
 fn main() {
     let args = Args::parse();
 
-    match args.subcommand {
-        Some(sub) => match sub {
-            SubCommand::Find(find) => {}
+    match args.command {
+        Some(Command::Config(config)) => match config.subcommand {
+            ConfigCommand::Reset(reset) => commands::config::reset(reset),
+            ConfigCommand::Show(show) => commands::config::show(show),
         },
-
-        // Default list behavior
-        None => {
-            commands::list::exec(args.list);
-        }
+        Some(Command::Find(find)) => {}
+        None => commands::list::exec(args.list, LsConfig::parse()),
     }
 }

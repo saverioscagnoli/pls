@@ -1,5 +1,5 @@
 use std::{
-    collections::VecDeque,
+    collections::{HashSet, VecDeque},
     fs,
     path::{Path, PathBuf},
 };
@@ -28,7 +28,6 @@ impl Default for WalkOptions {
 #[derive(Debug)]
 #[derive(Default)]
 pub struct Walk {
-    queue: VecDeque<fs::ReadDir>,
     options: WalkOptions,
 }
 
@@ -59,49 +58,74 @@ impl Walk {
     }
 }
 
-// BFS search https://en.wikipedia.org/wiki/Breadth-first_search#Pseudocode
-// 1  procedure BFS(G, root) is
-// 2      let Q be a queue
-// 3      label root as explored
-// 4      Q.enqueue(root)
-// 5      while Q is not empty do
-// 6          v := Q.dequeue()
-// 7          if v is the goal then
-// 8              return v
-// 9          for all edges from v to w in G.adjacentEdges(v) do
-// 10              if w is not labeled as explored then
-// 11                  label w as explored
-// 12                  w.parent := v
-// 13                  Q.enqueue(w)
+pub struct WalkIter {
+    queue: VecDeque<(fs::ReadDir, usize)>,
+    options: WalkOptions,
+}
 
-impl Walk {
-    pub fn bfs(&mut self, mut f: impl FnMut(&fs::DirEntry)) {
-        let root = match fs::read_dir(&self.options.root) {
-            Ok(r) => r,
-            Err(e) => {
-                eprintln!("Error reading {}: {}", self.options.root.display(), e);
-                return;
-            }
+impl IntoIterator for Walk {
+    type Item = (fs::DirEntry, usize);
+    type IntoIter = WalkIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        let mut queue = VecDeque::new();
+
+        match fs::read_dir(&self.options.root) {
+            Ok(r) => queue.push_back((r, 0)),
+            Err(e) => eprintln!("Error reading {}: {}", self.options.root.display(), e),
         };
 
-        self.queue.push_back(root);
+        WalkIter {
+            queue,
+            options: self.options,
+        }
+    }
+}
 
-        while let Some(rd) = self.queue.pop_front() {
-            for entry in rd.filter_map(Result::ok) {
-                f(&entry);
+impl Iterator for WalkIter {
+    type Item = (fs::DirEntry, usize);
 
-                let Ok(ft) = entry.file_type() else {
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            let (mut rd, depth) = self.queue.pop_front()?;
+
+            while let Some(entry) = rd.next() {
+                let Ok(entry) = entry else {
                     continue;
                 };
 
-                if ft.is_dir() {
-                    let Ok(sub_rd) = fs::read_dir(&entry.path()) else {
-                        continue;
-                    };
-
-                    self.queue.push_back(sub_rd);
+                // Skip hidden entries
+                if !self.options.all
+                    && entry
+                        .file_name()
+                        .as_encoded_bytes()
+                        .first()
+                        .map_or(false, |&b| b == b'.')
+                {
                     continue;
                 }
+
+                if let Ok(ft) = entry.file_type()
+                    && depth < self.options.max_depth - 1
+                {
+                    if self.options.follow_symlinks
+                        && ft.is_symlink()
+                        && let Ok(sub_rd) = fs::read_dir(&entry.path())
+                    {
+                        self.queue.push_back((sub_rd, depth + 1));
+                    }
+
+                    // ft.is_dir() and ft.is_symlink() are mutually exclusive
+                    if ft.is_dir()
+                        && let Ok(sub_rd) = fs::read_dir(&entry.path())
+                    {
+                        self.queue.push_back((sub_rd, depth + 1));
+                    }
+                }
+
+                self.queue.push_front((rd, depth));
+
+                return Some((entry, depth));
             }
         }
     }
