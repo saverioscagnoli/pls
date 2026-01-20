@@ -1,47 +1,36 @@
-use figura::{Context, Template, Value};
-
 use crate::{
-    args::LsArgs,
     config::LsConfig,
     table::{Alignment, Table},
+    util::FileInfo,
     walk::Walk,
 };
-use std::{
-    fs::{self, Metadata},
-    path::PathBuf,
-};
+use figura::{Context, Template};
+use std::path::PathBuf;
 
-struct EntryInfo {
-    name: String,
-    path: PathBuf,
-    meta: Metadata,
-    link_meta: Option<Metadata>,
+/// The default behavior of the cli tool.
+///
+/// This will be flattened into the general args
+#[derive(Debug, Clone)]
+#[derive(clap::Parser)]
+pub struct LsArgs {
+    #[clap(index = 1, default_value = ".")]
+    pub path: PathBuf,
+
+    #[clap(short, long, default_value_t = false)]
+    pub all: bool,
+
+    #[clap(short, long, default_value_t = 1)]
+    pub depth: usize,
 }
 
-impl EntryInfo {
-    fn from_dir_entry(entry: fs::DirEntry) -> Option<Self> {
-        let name = entry.file_name().to_string_lossy().to_string();
-        let path = entry.path();
-        let mut link_meta = None;
-
-        if path.is_symlink() {
-            link_meta = fs::symlink_metadata(&path).ok();
+impl Default for LsArgs {
+    fn default() -> Self {
+        Self {
+            path: PathBuf::from("."),
+            all: false,
+            depth: 1,
         }
-
-        let meta = entry.metadata().ok()?;
-
-        Some(Self {
-            name,
-            path,
-            meta,
-            link_meta,
-        })
     }
-}
-
-fn insert_context(ctx: &mut Context, info: &EntryInfo) {
-    ctx.insert("name", Value::owned_str(info.name.clone()));
-    ctx.insert("icon", Value::static_str("d"));
 }
 
 pub fn exec(args: LsArgs, config: LsConfig) {
@@ -62,12 +51,12 @@ pub fn exec(args: LsArgs, config: LsConfig) {
         .max_depth(args.depth)
         .follow_symlinks(false)
     {
-        let Some(info) = EntryInfo::from_dir_entry(entry) else {
+        let Some(info) = FileInfo::from_dir_entry(entry, depth) else {
             skipped += 1;
             continue;
         };
 
-        insert_context(&mut context, &info);
+        info.write_to_context(&mut context, &config);
 
         for t in &templates {
             if let Ok(output) = t.format(&context) {
@@ -82,5 +71,10 @@ pub fn exec(args: LsArgs, config: LsConfig) {
     }
 
     println!("total {}", table.rows().len());
+
+    if skipped > 0 {
+        println!("skipped: {}", skipped);
+    }
+
     println!("{}", table);
 }

@@ -1,6 +1,5 @@
 #![warn(clippy::use_self)]
 
-mod args;
 mod commands;
 mod config;
 mod consts;
@@ -9,10 +8,31 @@ mod util;
 mod walk;
 
 use crate::{
-    args::{Args, Command, ConfigCommand},
+    commands::{
+        config::{ConfigArgs, ConfigCommand},
+        find::FindArgs,
+        list::LsArgs,
+    },
     config::{LsConfig, Parse},
 };
 use clap::Parser;
+
+#[derive(Debug, Clone)]
+#[derive(clap::Subcommand)]
+pub enum Command {
+    Find(FindArgs),
+    Config(ConfigArgs),
+}
+
+#[derive(Debug, Clone)]
+#[derive(clap::Parser)]
+pub struct Args {
+    #[clap(flatten)]
+    pub list: LsArgs,
+
+    #[clap(subcommand)]
+    pub command: Option<Command>,
+}
 
 fn main() {
     let args = Args::parse();

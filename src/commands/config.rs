@@ -1,29 +1,79 @@
-use std::{fs, io};
-
 use crate::{
-    args::{CommandWithConfig, ConfigResetArgs, ConfigShowArgs},
-    config::{LsConfig, Parse},
+    config::{ConfigKind, LsConfig, Parse},
     consts, util,
 };
+use std::fs;
 
-fn rewrite_config(commands: &[CommandWithConfig]) {
-    for command in commands {
-        let Some(path) = util::config_path(*command) else {
+#[derive(Debug, Clone)]
+#[derive(clap::Subcommand)]
+pub enum ConfigCommand {
+    Reset(ConfigResetArgs),
+    Show(ConfigShowArgs),
+}
+
+#[derive(Debug, Clone)]
+#[derive(clap::Parser)]
+pub struct ConfigArgs {
+    #[clap(subcommand)]
+    pub subcommand: ConfigCommand,
+}
+
+#[derive(Debug, Clone)]
+#[derive(clap::Parser)]
+pub struct ConfigResetArgs {
+    #[clap(short, long, default_value_t = false)]
+    pub yes: bool,
+
+    #[clap(short, long, default_value_t = false, group = "action")]
+    pub list: bool,
+
+    #[clap(short, long, default_value_t = false, group = "action")]
+    pub find: bool,
+}
+
+#[derive(Debug, Clone)]
+#[derive(clap::Parser)]
+pub struct ConfigShowArgs {
+    #[clap(short, long, default_value_t = false)]
+    pub list: bool,
+
+    #[clap(short, long, default_value_t = false, group = "action")]
+    pub find: bool,
+}
+
+fn get_selected_configs(list: bool, find: bool) -> Vec<ConfigKind> {
+    let mut configs = Vec::new();
+
+    if list {
+        configs.push(ConfigKind::List);
+    }
+
+    if find {
+        configs.push(ConfigKind::Find);
+    }
+
+    configs
+}
+
+fn rewrite_config(kinds: &[ConfigKind]) {
+    for kind in kinds {
+        let Some(path) = util::config_path(*kind) else {
             eprintln!(
                 "Failed to reset config for command '{}', config does not exist",
-                command
+                kind
             );
-            return;
+
+            continue;
         };
 
-        match command {
-            CommandWithConfig::List => {
+        match kind {
+            ConfigKind::List => {
                 let config = LsConfig::default();
                 let content = toml::to_string_pretty(&config).unwrap();
 
                 if let Err(e) = fs::write(&path, content) {
                     eprintln!("Failed to write config file: {}", e);
-                    return;
+                    continue;
                 }
 
                 println!("Successfully reset config at '{}'.", path.display());
@@ -33,68 +83,54 @@ fn rewrite_config(commands: &[CommandWithConfig]) {
     }
 }
 
-pub fn print_config(command: CommandWithConfig) {
-    match command {
-        CommandWithConfig::List => {
+fn print_config(kind: ConfigKind) {
+    match kind {
+        ConfigKind::List => {
             let config = LsConfig::parse();
             let content = toml::to_string_pretty(&config).unwrap();
 
-            if let Some(path) = util::config_path(command) {
+            if let Some(path) = util::config_path(kind) {
                 println!("path: {}", path.display());
                 println!();
             }
 
             println!("{}", content);
         }
-
-        CommandWithConfig::Find => todo!(),
+        ConfigKind::Find => todo!(),
     }
 }
 
-pub fn reset(args: ConfigResetArgs) {
-    if !args.list && !args.find {
-        eprintln!("You must select at least one configuration file with '--list' or '--find'");
-        return;
-    }
-
-    let mut commands = Vec::new();
-
-    if args.list {
-        commands.push(CommandWithConfig::List);
-    }
-
-    if args.find {
-        commands.push(CommandWithConfig::Find);
-    }
-
-    if args.yes {
-        rewrite_config(&commands);
-    } else {
-        let Ok(response) = util::prompt(consts::RESET_CONFIG_PROMPT) else {
+fn confirm_reset() -> bool {
+    match util::prompt(consts::RESET_CONFIG_PROMPT) {
+        Ok(response) => matches!(response.to_lowercase().as_str(), "y" | "yes"),
+        Err(_) => {
             eprintln!("I/O Error while prompting the user. Aborting.");
-            return;
-        };
-
-        match response.to_lowercase().as_str() {
-            "y" | "yes" => {
-                rewrite_config(&commands);
-            }
-            _ => println!("Aborting reset."),
+            false
         }
     }
 }
 
-pub fn show(args: ConfigShowArgs) {
-    if (!args.list && !args.find) || (args.list && args.find) {
-        eprintln!("You must select at most one configuration file with '--list' or '--find'");
+pub fn reset(args: ConfigResetArgs) {
+    let configs = get_selected_configs(args.list, args.find);
+
+    if configs.is_empty() {
+        eprintln!("You must select at least one configuration file with '--list' or '--find'");
         return;
     }
 
-    if args.list {
-        print_config(CommandWithConfig::List);
+    if args.yes || confirm_reset() {
+        rewrite_config(&configs);
+    } else {
+        println!("Aborting reset.");
     }
+}
 
-    if args.find {
-        print_config(CommandWithConfig::Find);
+pub fn show(args: ConfigShowArgs) {
+    let configs = get_selected_configs(args.list, args.find);
+
+    match configs.len() {
+        0 => eprintln!("You must select one configuration file with '--list' or '--find'"),
+        1 => print_config(configs[0]),
+        _ => eprintln!("You must select at most one configuration file with '--list' or '--find'"),
     }
 }
