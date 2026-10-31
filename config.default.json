@@ -1,0 +1,21 @@
+{
+  "list": {
+    "columns": [
+      {
+        "format": "{type} {name}"
+      },
+      {
+        "format": "{permissions}"
+      },
+      {
+        "format": "{size}"
+      },
+      {
+        "format": "{modified}"
+      },
+      {
+        "format": "{nlink}"
+      }
+    ]
+  }
+}

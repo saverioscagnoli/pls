@@ -1,0 +1,156 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PLS Configuration Schema",
+  "description": "Schema for the configuration file of PLS.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "palette": {
+      "description": "Named colors that styles can refer to by name, e.g. \"blue\": \"#89b4fa\". A palette name overrides a built-in color with the same name.",
+      "type": "object",
+      "propertyNames": { "$ref": "#/$defs/Identifier" },
+      "additionalProperties": { "$ref": "#/$defs/Color" },
+      "default": {}
+    },
+    "ls": {
+      "description": "List command configuration.",
+      "type": "object",
+      "additionalProperties": false,
+      "default": {},
+      "properties": {
+        "columns": {
+          "description": "Columns in display order.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/Column" },
+          "default": [{ "header": "Name", "format": "{icon} {name}" }]
+        },
+        "padding": {
+          "description": "Number of spaces between columns.",
+          "type": "integer",
+          "minimum": 0,
+          "default": 2
+        },
+        "size_unit": {
+          "description": "Controls how file sizes are displayed.",
+          "enum": ["auto", "b", "kb", "mb", "gb", "tb"],
+          "default": "auto"
+        },
+        "created_fmt": { "$ref": "#/$defs/TimeFormat", "description": "strftime format for the creation timestamp." },
+        "modified_fmt": { "$ref": "#/$defs/TimeFormat", "description": "strftime format for the modification timestamp." },
+        "accessed_fmt": { "$ref": "#/$defs/TimeFormat", "description": "strftime format for the access timestamp." },
+        "icons": {
+          "description": "Icons are looked up by exact name, then extension (files only), then kind, then default.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "default": { "type": "string", "default": "" },
+            "names": { "$ref": "#/$defs/StringMap", "description": "Exact file names. Space-separated keys share a value: \"go.mod go.sum\"." },
+            "extensions": { "$ref": "#/$defs/StringMap", "description": "Extensions without the dot. Space-separated keys share a value: \"jpg jpeg png\"." },
+            "kinds": {
+              "type": "object",
+              "propertyNames": { "$ref": "#/$defs/Kind" },
+              "additionalProperties": { "type": "string" }
+            }
+          }
+        },
+        "file_styles": {
+          "description": "Styles for the icon and name, looked up the same way as icons.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "default": { "$ref": "#/$defs/Style", "description": "Name style when nothing matches." },
+            "icon_default": { "$ref": "#/$defs/Style", "description": "Icon style when nothing matches. Falls back to default." },
+            "names": { "$ref": "#/$defs/StyleMap" },
+            "extensions": { "$ref": "#/$defs/StyleMap" },
+            "kinds": {
+              "type": "object",
+              "propertyNames": { "$ref": "#/$defs/Kind" },
+              "additionalProperties": { "$ref": "#/$defs/Style" }
+            }
+          }
+        },
+        "styles": {
+          "description": "Styles for the other columns, keyed by variable.",
+          "type": "object",
+          "propertyNames": {
+            "enum": ["path", "extension", "kind", "depth", "size", "permissions", "created", "modified", "accessed", "owner", "group", "nlink"]
+          },
+          "additionalProperties": { "$ref": "#/$defs/StyleRule" },
+          "default": {}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "Identifier": {
+      "type": "string",
+      "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+    },
+    "Kind": {
+      "enum": ["file", "directory", "executable", "symlink_file", "symlink_directory", "broken_symlink"]
+    },
+    "Column": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["format"],
+      "properties": {
+        "header": { "type": "string", "description": "Column header. Omit for no header." },
+        "format": {
+          "type": "string",
+          "description": "Template with variables like {name}. Add > to right-align ({size>}) or ^ to center ({modified^}).",
+          "examples": ["{icon} {name}", "{size>}", "{modified^}"]
+        }
+      }
+    },
+    "TimeFormat": {
+      "type": "string",
+      "default": "%b %d %H:%M"
+    },
+    "StringMap": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "StyleMap": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/Style" }
+    },
+    "StyleRule": {
+      "description": "A style, or a default style with per-kind overrides.",
+      "anyOf": [
+        { "$ref": "#/$defs/Style" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "default": { "$ref": "#/$defs/Style" },
+            "kinds": {
+              "type": "object",
+              "propertyNames": { "$ref": "#/$defs/Kind" },
+              "additionalProperties": { "$ref": "#/$defs/Style" }
+            }
+          }
+        }
+      ]
+    },
+    "Style": {
+      "description": "Space-separated words: a foreground color, then optionally \"on <color>\" for the background and text styles. E.g. \"blue bold\", \"red on black underline\".",
+      "type": "string",
+      "pattern": "^\\s*((#[0-9a-fA-F]{6}|[A-Za-z_][A-Za-z0-9_]*|[0-9]{1,3})(\\s+|$))*$",
+      "examples": ["blue", "teal bold italic", "#ff0000 on black", "overlay0 dim"]
+    },
+    "Color": {
+      "description": "A hex code, a built-in color name, or an ANSI code (0-255).",
+      "anyOf": [
+        { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
+        {
+          "enum": [
+            "black", "red", "green", "yellow", "blue", "magenta", "cyan", "white", "gray",
+            "bright_black", "bright_red", "bright_green", "bright_yellow", "bright_blue", "bright_magenta", "bright_cyan", "bright_white"
+          ]
+        },
+        { "type": "integer", "minimum": 0, "maximum": 255 }
+      ]
+    }
+  }
+}

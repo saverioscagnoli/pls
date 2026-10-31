@@ -1,1 +1,14 @@
-/target
+# Binaries
+/pls
+*.exe
+*.so
+*.dylib
+
+# Test and coverage output
+*.test
+*.out
+
+# Local environment
+.env
+go.work
+go.work.sum

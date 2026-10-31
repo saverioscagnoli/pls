@@ -1,9 +1,0 @@
-[package]
-name = "pls"
-version = "0.1.0"
-edition = "2024"
-
-[dependencies]
-figura = "3.2.0"
-lexopt = "0.3.2"
-tinyjson = "2.5.1"

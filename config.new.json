@@ -1,0 +1,162 @@
+{
+  "$schema": "./config.schema.new.json",
+  "palette": {
+    "blue": "#89b4fa",
+    "teal": "#94e2d5",
+    "text": "#cdd6f4",
+    "overlay2": "#9399b2",
+    "overlay0": "#6c7086",
+    "green": "#a6e3a1",
+    "mauve": "#cba6f7",
+    "red": "#f38ba8",
+    "yellow": "#f9e2af",
+    "peach": "#fab387"
+  },
+  "ls": {
+    "columns": [
+      {
+        "header": "Name",
+        "format": "{icon}  {name}"
+      },
+      {
+        "header": "Permissions",
+        "format": "{permissions}"
+      },
+      {
+        "header": "Owner",
+        "format": "{owner}"
+      },
+      {
+        "header": "Size",
+        "format": "{size>}"
+      },
+      {
+        "header": "Modified",
+        "format": "{modified>}"
+      }
+    ],
+    "modified_fmt": "%d %b %H:%M",
+    "icons": {
+      "default": "",
+      "names": {
+        "Desktop": "",
+        "Downloads": "",
+        "Templates": "",
+        "Public": "",
+        "Documents": "",
+        "Music": "",
+        "Pictures": "",
+        "Videos": "",
+        "Projects": "",
+        "dev": "",
+        ".bashrc .zshrc .profile": "",
+        ".config": "",
+        ".local": "",
+        ".cache": "",
+        ".git .gitignore .gitmodules .gitattributes": "",
+        ".github": "",
+        "node_modules": "",
+        "Cargo.toml Cargo.lock": "",
+        "package.json package-lock.json": "",
+        "Makefile": "",
+        "CMakeLists.txt": "",
+        "Dockerfile docker-compose.yml": "",
+        "LICENSE": "󰈙",
+        "README.md": "󰂺",
+        ".env": "",
+        "flake.nix": "",
+        "go.mod go.sum": "",
+        "Gemfile": ""
+      },
+      "extensions": {
+        "rs": "",
+        "py": "",
+        "js mjs cjs": "",
+        "ts": "",
+        "tsx jsx": "",
+        "go": "",
+        "c h": "",
+        "cpp cc hpp": "",
+        "java": "",
+        "kt": "",
+        "rb": "",
+        "php": "",
+        "lua": "",
+        "zig": "",
+        "nix": "",
+        "hs": "",
+        "swift": "",
+        "cs": "󰌛",
+        "dart": "",
+        "ex exs": "",
+        "sh bash zsh fish": "",
+        "vim": "",
+        "html": "",
+        "css scss": "",
+        "vue": "",
+        "svelte": "",
+        "json jsonc": "",
+        "toml": "",
+        "yaml yml": "",
+        "xml": "󰗀",
+        "ini conf cfg": "",
+        "md": "",
+        "txt": "",
+        "pdf": "",
+        "doc docx": "",
+        "xls xlsx csv": "",
+        "ppt pptx": "",
+        "png jpg jpeg gif webp bmp ico": "",
+        "svg": "󰜡",
+        "mp3 flac wav ogg": "",
+        "mp4 mkv webm mov": "",
+        "zip tar gz xz zst 7z rar deb rpm": "",
+        "ttf otf woff woff2": "",
+        "lock": "",
+        "log": "",
+        "sql db sqlite": "",
+        "iso img": "",
+        "diff patch": "",
+        "bak tmp": "",
+        "key pem gpg": ""
+      },
+      "kinds": {
+        "directory": "",
+        "symlink_directory": "",
+        "symlink_file": "",
+        "broken_symlink": "",
+        "executable": ""
+      }
+    },
+    "file_styles": {
+      "default": "text",
+      "icon_default": "overlay2",
+      "kinds": {
+        "directory": "blue bold",
+        "symlink_directory": "teal bold italic",
+        "symlink_file": "teal italic",
+        "broken_symlink": "red strikethrough",
+        "executable": "green bold"
+      },
+      "extensions": {
+        "png jpg jpeg gif webp bmp ico svg mp3 flac wav ogg mp4 mkv webm mov": "mauve",
+        "zip tar gz xz zst 7z rar deb rpm iso img": "red",
+        "md txt pdf doc docx": "yellow",
+        "json jsonc toml yaml yml ini conf cfg lock": "peach"
+      }
+    },
+    "styles": {
+      "permissions": "overlay0",
+      "owner": "yellow",
+      "group": "peach",
+      "size": {
+        "default": "green",
+        "kinds": {
+          "directory": "overlay0 dim"
+        }
+      },
+      "modified": "mauve",
+      "nlink": "overlay0"
+    }
+  }
+}
