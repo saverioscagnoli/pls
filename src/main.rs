@@ -1,89 +1,38 @@
-mod commands;
-mod config;
-mod table;
+mod args;
+mod find;
+mod list;
 mod util;
-mod walk;
 
-use crate::config::Config;
-use clap::{Parser, Subcommand};
-use std::{path::PathBuf, usize};
-
-#[derive(Debug, Clone, Parser)]
-pub struct FindArgs {
-    #[arg(index = 1)]
-    pattern: String,
-
-    #[arg(index = 2, default_value = ".")]
-    root: PathBuf,
-
-    #[arg(short, long, default_value_t = false)]
-    all: bool,
-
-    #[arg(short, long, default_value_t = usize::MAX)]
-    depth: usize,
-
-    #[arg(short, long, default_value_t = false)]
-    follow_symlinks: bool,
-
-    #[arg(short, long, default_value_t = false)]
-    exact: bool,
-
-    #[arg(short, long, default_value_t = false)]
-    timed: bool,
-}
-
-#[derive(Debug, Clone, Parser)]
-pub struct SizeArgs {
-    #[arg(index = 1)]
-    path: PathBuf,
-
-    #[arg(short, long, default_value_t = false)]
-    all: bool,
-
-    #[arg(short, long, default_value_t = usize::MAX)]
-    depth: usize,
-}
-
-#[derive(Debug, Clone, Subcommand)]
-enum Command {
-    Find(FindArgs),
-    Size(SizeArgs),
-}
-
-#[derive(Debug, Clone, Parser)]
-struct Args {
-    #[arg(index = 1, default_value = ".")]
-    path: PathBuf,
-
-    #[arg(short, long, default_value_t = false)]
-    all: bool,
-
-    #[arg(short, long, default_value_t = 1)]
-    depth: usize,
-
-    #[arg(short, long, default_value_t = false)]
-    follow_symlinks: bool,
-
-    #[arg(short, long, default_value_t = false)]
-    pad_names: bool,
-
-    #[command(subcommand)]
-    subcommand: Option<Command>,
-}
+use crate::{args::Args, find::find, list::list};
 
 fn main() {
-    let args = Args::parse();
-    let config = match Config::parse() {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!("Error parsing config: {}", e);
-            return;
-        }
+    let args = match Args::parse() {
+        Ok(a) => a,
+        Err(e) => return eprintln!("{}", e),
     };
 
-    match args.subcommand {
-        Some(Command::Find(args)) => commands::find::execute(&args),
-        Some(Command::Size(args)) => commands::size::execute(&args),
-        _ => commands::list::execute(&args, &config.ls),
+    let config_dir = util::config_dir();
+
+    if !config_dir.exists()
+        && let Err(e) = std::fs::create_dir_all(&config_dir)
+    {
+        eprintln!("failed to create {}: {}", config_dir.display(), e);
+        std::process::exit(1);
+    }
+
+    let config_content =
+        std::fs::read_to_string(util::config_file()).expect("Failed to read config file");
+
+    match args {
+        Args::List(a) => {
+            if let Err(e) = list(a) {
+                eprintln!("{}", e);
+            }
+        }
+        Args::Find(a) => {
+            if let Err(e) = find(a) {
+                eprintln!("{}", e)
+            }
+        }
     }
 }

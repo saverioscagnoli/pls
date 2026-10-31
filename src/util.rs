@@ -1,15 +1,21 @@
-pub fn permissions_to_string(mode: u32) -> String {
-    let mut perms = String::with_capacity(9);
+use std::path::PathBuf;
 
-    let user_perms = (mode >> 6) & 0o7;
-    let group_perms = (mode >> 3) & 0o7;
-    let other_perms = mode & 0o7;
-
-    for &perm in &[user_perms, group_perms, other_perms] {
-        perms.push(if perm & 0o4 != 0 { 'r' } else { '-' });
-        perms.push(if perm & 0o2 != 0 { 'w' } else { '-' });
-        perms.push(if perm & 0o1 != 0 { 'x' } else { '-' });
+/// Returns ~/.config, if set. Otherwise it will return /tmp
+pub fn config_dir() -> PathBuf {
+    if let Some(dir) = std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from) {
+        if dir.is_absolute() {
+            return dir.join("pls");
+        }
     }
 
-    perms
+    if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
+        return home.join(".config").join("pls");
+    }
+
+    eprintln!("XDG_CONFIG_HOME is not set. Falling back to /tmp/pls");
+    PathBuf::from("/tmp/pls")
+}
+
+pub fn config_file() -> PathBuf {
+    config_dir().join("config.lua")
 }
