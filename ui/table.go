@@ -15,6 +15,21 @@ const (
 	AlignCenter Align = 2
 )
 
+func (a *Align) UnmarshalText(b []byte) error {
+	switch strings.ToLower(string(b)) {
+	case "left":
+		*a = AlignLeft
+	case "right":
+		*a = AlignRight
+	case "center":
+		*a = AlignCenter
+	default:
+		return fmt.Errorf("invalid alignment: %q", b)
+	}
+
+	return nil
+}
+
 var ansiRe = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 
 func visibleLen(s string) int {
@@ -39,7 +54,7 @@ func pad(s string, width int, align Align) string {
 	}
 }
 
-func Table(rows [][]string, aligns []Align, gap int) {
+func Table(rows [][]string, aligns []Align, gap uint) {
 	widths := []int{}
 
 	for _, row := range rows {
@@ -54,7 +69,7 @@ func Table(rows [][]string, aligns []Align, gap int) {
 		}
 	}
 
-	sep := strings.Repeat(" ", gap)
+	sep := strings.Repeat(" ", int(gap))
 
 	for _, row := range rows {
 		cells := make([]string, len(row))

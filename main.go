@@ -24,6 +24,8 @@ func main() {
 		os.Exit(1)
 	}
 
+	fmt.Printf("%+v\n", config)
+
 	switch a := a.(type) {
 	case args.List:
 		commands.List(a, config.List)

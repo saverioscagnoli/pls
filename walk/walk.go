@@ -13,7 +13,7 @@ type Entry struct {
 	fs.DirEntry
 }
 
-func Dir(root string, maxDepth uint) iter.Seq2[Entry, error] {
+func Walk(root string, maxDepth uint) iter.Seq2[Entry, error] {
 	return func(yield func(Entry, error) bool) {
 		sep := string(filepath.Separator)
 

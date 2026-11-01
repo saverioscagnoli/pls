@@ -9,8 +9,9 @@ import (
 )
 
 type ListColumn struct {
-	Header *string `json:"header"`
-	Format string  `json:"format"`
+	Header *string  `json:"header"`
+	Format string   `json:"format"`
+	Align  ui.Align `json:"align"`
 }
 
 type ListIcons struct {
@@ -22,6 +23,7 @@ type ListIcons struct {
 
 type List struct {
 	Columns     []ListColumn `json:"columns"`
+	Gap         uint         `json:"gap"`
 	ModifiedFmt string       `json:"modified_fmt"`
 	Icons       ListIcons    `json:"icons"`
 }
@@ -39,12 +41,13 @@ func Default() *Config {
 	return &Config{
 		List: List{
 			Columns: []ListColumn{
-				{Header: nil, Format: "{icon} {name}"},
-				{Header: nil, Format: "{permissions}"},
-				{Header: nil, Format: "{size}"},
-				{Header: nil, Format: "{modified}"},
-				{Header: nil, Format: "{nlink}"},
+				{Header: nil, Align: ui.AlignLeft, Format: "{icon} {name}"},
+				{Header: nil, Align: ui.AlignLeft, Format: "{permissions}"},
+				{Header: nil, Align: ui.AlignRight, Format: "{size}"},
+				{Header: nil, Align: ui.AlignLeft, Format: "{modified}"},
+				{Header: nil, Align: ui.AlignLeft, Format: "{nlink}"},
 			},
+			Gap:         2,
 			ModifiedFmt: "Jan _ 15:04",
 			Icons: ListIcons{
 				Default:    "f",
