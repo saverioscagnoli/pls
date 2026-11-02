@@ -5,16 +5,67 @@ import (
 	"pls/args"
 	"pls/config"
 	"pls/file"
+	"pls/template"
 	"pls/ui"
 	"strconv"
 )
 
-func List(args args.List, config config.List) {
+func headers(config *config.List) []string {
+	headers := []string{}
+
+	for _, col := range config.Columns {
+		if col.Header != nil {
+			headers = append(headers, *col.Header)
+		}
+	}
+
+	return headers
+}
+
+func templates(config *config.List) ([]*template.Template, error) {
+	templates := []*template.Template{}
+
+	for _, col := range config.Columns {
+		t, err := template.Compile('{', '}', col.Format)
+
+		if err != nil {
+			return templates, err
+		}
+
+		templates = append(templates, t)
+	}
+
+	return templates, nil
+}
+
+func alignments(config *config.List) []ui.Align {
+	alignments := []ui.Align{}
+
+	for _, col := range config.Columns {
+		alignments = append(alignments, col.Align)
+	}
+
+	return alignments
+}
+
+func List(args args.List, config config.List) error {
 	skipped := 0
 	total := 0
 	rows := [][]string{}
-	alignments := []ui.Align{}
 	ctx := map[string]string{}
+
+	headers := headers(&config)
+
+	if len(headers) > 0 {
+		rows = append(rows, headers)
+	}
+
+	templates, err := templates(&config)
+	alignments := alignments(&config)
+
+	if err != nil {
+		return fmt.Errorf("found invalid template: %s", err)
+	}
 
 	for entry, err := range file.Walk(args.Path, args.Depth) {
 		row := []string{}
@@ -38,6 +89,16 @@ func List(args args.List, config config.List) {
 		ctx["modified"] = info.ModTime().Format(config.ModifiedFmt)
 		ctx["nlink"] = strconv.FormatUint(file.LinkCount(info), 10)
 
+		for _, t := range templates {
+			out, err := t.Format(ctx)
+
+			if err != nil {
+				return fmt.Errorf("failed to format column: %s", err)
+			}
+
+			row = append(row, out)
+		}
+
 		rows = append(rows, row)
 
 		clear(ctx)
@@ -51,4 +112,6 @@ func List(args args.List, config config.List) {
 	}
 
 	ui.Table(rows, alignments, config.Gap)
+
+	return nil
 }

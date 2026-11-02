@@ -28,10 +28,15 @@ func Walk(root string, maxDepth uint) iter.Seq2[Entry, error] {
 
 			var depth uint
 
-			if path != root {
-				rel, _ := filepath.Rel(root, path)
-				depth = uint(strings.Count(rel, sep)) + 1
+			if path == root {
+				if maxDepth == 0 {
+					return filepath.SkipDir
+				}
+				return nil
 			}
+
+			rel, _ := filepath.Rel(root, path)
+			depth = uint(strings.Count(rel, sep)) + 1
 
 			if !yield(Entry{Path: path, Depth: depth, DirEntry: d}, nil) {
 				return filepath.SkipAll

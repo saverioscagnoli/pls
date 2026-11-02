@@ -28,7 +28,10 @@ func main() {
 
 	switch a := a.(type) {
 	case args.List:
-		commands.List(a, config.List)
+		if err := commands.List(a, config.List); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
 	case args.Find:
 		commands.Find(a, config.Find)
 	}

@@ -41,14 +41,14 @@ func Default() *Config {
 	return &Config{
 		List: List{
 			Columns: []ListColumn{
-				{Header: nil, Align: ui.AlignLeft, Format: "{icon} {name}"},
+				{Header: nil, Align: ui.AlignLeft, Format: "{name}"},
 				{Header: nil, Align: ui.AlignLeft, Format: "{permissions}"},
 				{Header: nil, Align: ui.AlignRight, Format: "{size}"},
 				{Header: nil, Align: ui.AlignLeft, Format: "{modified}"},
 				{Header: nil, Align: ui.AlignLeft, Format: "{nlink}"},
 			},
 			Gap:         2,
-			ModifiedFmt: "Jan _ 15:04",
+			ModifiedFmt: "Jan 02 15:04",
 			Icons: ListIcons{
 				Default:    "f",
 				Names:      map[string]string{},
