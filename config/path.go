@@ -8,7 +8,7 @@ import (
 
 func Dir() string {
 	if dir, err := os.UserConfigDir(); err == nil {
-		return dir
+		return filepath.Join(dir, "pls")
 	}
 
 	fmt.Fprintln(os.Stderr, "both $XDG_CONFIG_HOME and $HOME are not set. Falling back to /tmp/pls")

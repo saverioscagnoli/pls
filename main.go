@@ -17,6 +17,7 @@ func main() {
 	}
 
 	path := config.File()
+	fmt.Println(path)
 	config, err := config.Parse(path)
 
 	if err != nil {
