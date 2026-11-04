@@ -17,15 +17,12 @@ func main() {
 	}
 
 	path := config.File()
-	fmt.Println(path)
 	config, err := config.Parse(path)
 
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-
-	fmt.Printf("%+v\n", config)
 
 	switch a := a.(type) {
 	case args.List:

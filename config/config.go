@@ -15,17 +15,39 @@ type ListColumn struct {
 }
 
 type ListIcons struct {
-	Default    string            `json:"default"`
-	Names      map[string]string `json:"names"`
-	Extensions map[string]string `json:"extensions"`
-	Kinds      map[string]string `json:"kinds"`
+	Default    string   `json:"default"`
+	Names      SplitMap `json:"names"`
+	Extensions SplitMap `json:"extensions"`
+	Kinds      SplitMap `json:"kinds"`
+}
+
+type ListFileStyles struct {
+	Default     string   `json:"default"`
+	IconDefault string   `json:"icon-default"`
+	Names       SplitMap `json:"names"`
+	Extensions  SplitMap `json:"extensions"`
+	Kinds       SplitMap `json:"kinds"`
+}
+
+type ListVarStyles struct {
+	Name        string `json:"name"`
+	Kind        string `json:"kind"`
+	Icon        string `json:"icon"`
+	Permissions string `json:"permissions"`
+	Size        string `json:"size"`
+	Modified    string `json:"modified"`
+	NLink       string `json:"nlink"`
+	Owner       string `json:"owner"`
+	Group       string `json:"group"`
 }
 
 type List struct {
-	Columns     []ListColumn `json:"columns"`
-	Gap         uint         `json:"gap"`
-	ModifiedFmt string       `json:"modified_fmt"`
-	Icons       ListIcons    `json:"icons"`
+	Columns     []ListColumn   `json:"columns"`
+	Gap         uint           `json:"gap"`
+	ModifiedFmt string         `json:"modified_fmt"`
+	Icons       ListIcons      `json:"icons"`
+	FileStyles  ListFileStyles `json:"file-styles"`
+	VarStyles   ListVarStyles  `json:"var-styles"`
 }
 
 type Find struct {
@@ -45,6 +67,7 @@ func Default() *Config {
 				{Header: nil, Align: ui.AlignLeft, Format: "{permissions}"},
 				{Header: nil, Align: ui.AlignRight, Format: "{size}"},
 				{Header: nil, Align: ui.AlignLeft, Format: "{modified}"},
+				{Header: nil, Align: ui.AlignLeft, Format: "{owner} ({group})"},
 				{Header: nil, Align: ui.AlignLeft, Format: "{nlink}"},
 			},
 			Gap:         2,

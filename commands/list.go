@@ -8,6 +8,7 @@ import (
 	"pls/template"
 	"pls/ui"
 	"strconv"
+	"strings"
 )
 
 func headers(config *config.List) []string {
@@ -76,18 +77,39 @@ func List(args args.List, config config.List) error {
 		}
 
 		info, err := entry.Info()
+		name := info.Name()
+
+		if strings.HasPrefix(name, ".") && !args.All {
+			continue
+		}
 
 		if err != nil {
 			skipped++
 			continue
 		}
 
-		ctx["kind"] = string(entry.Kind())
-		ctx["name"] = entry.Name()
-		ctx["permissions"] = info.Mode().Perm().String()[1:]
-		ctx["size"] = strconv.FormatInt(info.Size(), 10)
-		ctx["modified"] = info.ModTime().Format(config.ModifiedFmt)
-		ctx["nlink"] = strconv.FormatUint(file.LinkCount(info), 10)
+		kind := string(entry.Kind())
+		icon := file.ResolveIcon(info, kind, &config.Icons)
+		permissions := info.Mode().Perm().String()[1:]
+		size := strconv.FormatInt(info.Size(), 10)
+		modified := info.ModTime().Format(config.ModifiedFmt)
+		nlink := strconv.FormatUint(file.LinkCount(info), 10)
+		owner, group, err := file.Ownership(info)
+
+		if err != nil {
+			skipped++
+			continue
+		}
+
+		ctx["name"] = name
+		ctx["kind"] = kind
+		ctx["icon"] = icon
+		ctx["permissions"] = permissions
+		ctx["size"] = size
+		ctx["modified"] = modified
+		ctx["nlink"] = nlink
+		ctx["owner"] = owner
+		ctx["group"] = group
 
 		for _, t := range templates {
 			out, err := t.Format(ctx)
