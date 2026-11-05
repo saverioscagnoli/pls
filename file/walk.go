@@ -74,3 +74,18 @@ func Walk(root string, maxDepth uint, all bool) iter.Seq2[Entry, error] {
 		})
 	}
 }
+
+func Walk(root string, maxDepth uint, all bool) iter.Seq2[Entry, error] {
+	return func(yield func(Entry, error) bool) {
+		entries, err := os.ReadDir(root)
+
+		if err != nil {
+			if !yield(Entry{}, err) {
+				return
+			}
+		}
+
+		for _, entry := range entries {
+		}
+	}
+}
