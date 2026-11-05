@@ -102,7 +102,7 @@ func ParseColor(s string) (Color, error) {
 			return 0, fmt.Errorf("invalid hex color %q", s)
 		}
 
-		return RGB(uint8(v>>17), uint8(v>>8), uint8(v)), nil
+		return RGB(uint8(v>>16), uint8(v>>8), uint8(v)), nil
 	}
 
 	if c, ok := colorByName[normalizeName(s)]; ok {
@@ -119,7 +119,7 @@ func (c *Color) UnmarshalJSON(data []byte) error {
 
 	var s string
 
-	if err := json.Unmarshal(data, &s); err != nil {
+	if err := json.Unmarshal(data, &s); err == nil {
 		parsed, err := ParseColor(s)
 
 		if err != nil {
@@ -207,6 +207,7 @@ const (
 	StyleReverse       Style = 7
 	StyleHidden        Style = 8
 	StyleStrikethrough Style = 9
+	StyleDim           Style = 10
 )
 
 func Stylize(s string, styles ...Style) string {

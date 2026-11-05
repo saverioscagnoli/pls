@@ -7,12 +7,12 @@ import (
 	"unicode/utf8"
 )
 
-type Align int
+type Align string
 
 const (
-	AlignLeft   Align = 0
-	AlignRight  Align = 1
-	AlignCenter Align = 2
+	AlignLeft   Align = "left"
+	AlignRight  Align = "right"
+	AlignCenter Align = "center"
 )
 
 func (a *Align) UnmarshalText(b []byte) error {

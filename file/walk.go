@@ -3,6 +3,7 @@ package file
 import (
 	"io/fs"
 	"iter"
+	"os"
 	"path/filepath"
 	"strings"
 )
@@ -13,9 +14,27 @@ type Entry struct {
 	fs.DirEntry
 }
 
-func Walk(root string, maxDepth uint) iter.Seq2[Entry, error] {
+func Walk(root string, maxDepth uint, all bool) iter.Seq2[Entry, error] {
 	return func(yield func(Entry, error) bool) {
+		target, err := os.Stat(root)
+
+		if err != nil || !target.IsDir() {
+			info, lerr := os.Lstat(root)
+
+			if lerr != nil {
+				yield(Entry{Path: root}, lerr)
+				return
+			}
+
+			yield(Entry{Path: root, DirEntry: fs.FileInfoToDirEntry(info)}, nil)
+			return
+		}
+
 		sep := string(filepath.Separator)
+
+		if info, err := os.Lstat(root); err == nil && info.Mode()&fs.ModeSymlink != 0 && !strings.HasSuffix(root, sep) {
+			root += sep
+		}
 
 		filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
@@ -26,8 +45,6 @@ func Walk(root string, maxDepth uint) iter.Seq2[Entry, error] {
 				return nil
 			}
 
-			var depth uint
-
 			if path == root {
 				if maxDepth == 0 {
 					return filepath.SkipDir
@@ -35,8 +52,15 @@ func Walk(root string, maxDepth uint) iter.Seq2[Entry, error] {
 				return nil
 			}
 
+			if !all && strings.HasPrefix(d.Name(), ".") {
+				if d.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+
 			rel, _ := filepath.Rel(root, path)
-			depth = uint(strings.Count(rel, sep)) + 1
+			depth := uint(strings.Count(rel, sep)) + 1
 
 			if !yield(Entry{Path: path, Depth: depth, DirEntry: d}, nil) {
 				return filepath.SkipAll

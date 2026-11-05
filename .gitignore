@@ -12,3 +12,7 @@
 .env
 go.work
 go.work.sum
+
+# Test fixtures
+/test/fixtures/
+/test/.pls-test

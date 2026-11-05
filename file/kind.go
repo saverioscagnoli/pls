@@ -18,7 +18,7 @@ const (
 func (e *Entry) Kind() Kind {
 	t := e.Type()
 
-	if t*fs.ModeSymlink == 0 {
+	if t&fs.ModeSymlink == 0 {
 		if t.IsDir() {
 			return KindDirectory
 		}

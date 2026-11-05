@@ -5,20 +5,20 @@ import (
 	"strings"
 )
 
-type SplitMap map[string]string
+type SplitMap[V any] map[string]V
 
-func (m *SplitMap) UnmarshalJSON(data []byte) error {
-	var raw map[string]string
+func (m *SplitMap[V]) UnmarshalJSON(data []byte) error {
+	var raw map[string]V
 
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
 	}
 
-	*m = make(SplitMap)
+	*m = make(SplitMap[V], len(raw))
 
 	for keys, val := range raw {
-		for ext := range strings.FieldsSeq(keys) {
-			(*m)[ext] = val
+		for key := range strings.FieldsSeq(keys) {
+			(*m)[key] = val
 		}
 	}
 

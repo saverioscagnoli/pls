@@ -5,6 +5,6 @@ import (
 	"pls/config"
 )
 
-func Find(args args.Find, config config.Find) {
+func Find(args args.Find, config config.ConfigFind) {
 
 }

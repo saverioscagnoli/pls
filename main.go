@@ -26,7 +26,7 @@ func main() {
 
 	switch a := a.(type) {
 	case args.List:
-		if err := commands.List(a, config.List); err != nil {
+		if err := commands.List(a, &config.Palette, config.List); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}

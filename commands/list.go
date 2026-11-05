@@ -2,16 +2,18 @@ package commands
 
 import (
 	"fmt"
+	"os"
 	"pls/args"
 	"pls/config"
 	"pls/file"
 	"pls/template"
 	"pls/ui"
+	"sort"
 	"strconv"
 	"strings"
 )
 
-func headers(config *config.List) []string {
+func headers(config *config.ConfigList) []string {
 	headers := []string{}
 
 	for _, col := range config.Columns {
@@ -23,7 +25,7 @@ func headers(config *config.List) []string {
 	return headers
 }
 
-func templates(config *config.List) ([]*template.Template, error) {
+func templates(config *config.ConfigList) ([]*template.Template, error) {
 	templates := []*template.Template{}
 
 	for _, col := range config.Columns {
@@ -39,7 +41,7 @@ func templates(config *config.List) ([]*template.Template, error) {
 	return templates, nil
 }
 
-func alignments(config *config.List) []ui.Align {
+func alignments(config *config.ConfigList) []ui.Align {
 	alignments := []ui.Align{}
 
 	for _, col := range config.Columns {
@@ -49,11 +51,8 @@ func alignments(config *config.List) []ui.Align {
 	return alignments
 }
 
-func List(args args.List, config config.List) error {
-	skipped := 0
-	total := 0
+func List(args args.List, palette *map[string]ui.Color, config config.ConfigList) error {
 	rows := [][]string{}
-	ctx := map[string]string{}
 
 	headers := headers(&config)
 
@@ -62,54 +61,109 @@ func List(args args.List, config config.List) error {
 	}
 
 	templates, err := templates(&config)
-	alignments := alignments(&config)
 
 	if err != nil {
 		return fmt.Errorf("found invalid template: %s", err)
 	}
 
-	for entry, err := range file.Walk(args.Path, args.Depth) {
-		row := []string{}
+	alignments := alignments(&config)
+	ctx := map[string]string{}
+	fileSpecs := map[string]ui.Spec{}
 
+	total := 0
+	skipped := 0
+	errCounts := map[string]int{}
+
+	skip := func(err error) {
+		skipped++
+		errCounts[err.Error()]++
+	}
+
+	warned := map[string]bool{}
+
+	warn := func(where string, style string, err error) {
+		key := where + "\x00" + style
+
+		if warned[key] {
+			return
+		}
+
+		warned[key] = true
+		fmt.Fprintf(os.Stderr, "%s: invalid style %q for %s: %s\n", ui.Foreground("warning", ui.ColorYellow), style, where, err)
+	}
+
+	parse := func(where string, style string) ui.Spec {
+		s, err := ui.ParseSpec(style, *palette)
 		if err != nil {
-			skipped++
+			warn(where, style, err)
+			return ui.Spec{}
+		}
+
+		return s
+	}
+
+	styleSpecs := map[string]ui.Spec{}
+
+	styleFor := func(field string, style string) ui.Spec {
+		key := field + "\x00" + style
+
+		if s, ok := styleSpecs[key]; ok {
+			return s
+		}
+
+		s := parse("styles."+field, style)
+		styleSpecs[key] = s
+		return s
+	}
+
+	st := config.Styles
+
+	for entry, err := range file.Walk(args.Path, args.Depth, args.All) {
+		row := []string{}
+		if err != nil {
+			skip(err)
 			continue
 		}
 
 		info, err := entry.Info()
+		if err != nil {
+			skip(err)
+			continue
+		}
+
 		name := info.Name()
 
-		if strings.HasPrefix(name, ".") && !args.All {
-			continue
-		}
-
-		if err != nil {
-			skipped++
-			continue
-		}
-
 		kind := string(entry.Kind())
-		icon := file.ResolveIcon(info, kind, &config.Icons)
-		permissions := info.Mode().Perm().String()[1:]
+
+		item := file.ResolveStyle(name, kind, &config.Files)
+		spec, ok := fileSpecs[item.Style]
+
+		if !ok {
+			spec = parse("files", item.Style)
+			fileSpecs[item.Style] = spec
+		}
+
+		icon := item.Icon
+		permissions := file.Permissions(info.Mode())
 		size := strconv.FormatInt(info.Size(), 10)
 		modified := info.ModTime().Format(config.ModifiedFmt)
 		nlink := strconv.FormatUint(file.LinkCount(info), 10)
 		owner, group, err := file.Ownership(info)
 
 		if err != nil {
-			skipped++
+			skip(err)
 			continue
 		}
 
-		ctx["name"] = name
-		ctx["kind"] = kind
-		ctx["icon"] = icon
-		ctx["permissions"] = permissions
-		ctx["size"] = size
-		ctx["modified"] = modified
-		ctx["nlink"] = nlink
-		ctx["owner"] = owner
-		ctx["group"] = group
+		ctx["name"] = styleFor("name", st.Name.For(kind)).Merge(spec).Apply(name)
+		ctx["icon"] = styleFor("icon", st.Icon.For(kind)).Merge(spec).Apply(icon)
+		ctx["kind"] = styleFor("kind", st.Kind.For(kind)).Apply(kind)
+		ctx["permissions"] = styleFor("permissions", st.Permissions.For(kind)).Apply(permissions)
+		ctx["size"] = styleFor("size", st.Size.For(kind)).Apply(size)
+		ctx["modified"] = styleFor("modified", st.Modified.For(kind)).Apply(modified)
+		ctx["nlink"] = styleFor("nlink", st.NLink.For(kind)).Apply(nlink)
+		ctx["owner"] = styleFor("owner", st.Owner.For(kind)).Apply(owner)
+		ctx["group"] = styleFor("group", st.Group.For(kind)).Apply(group)
 
 		for _, t := range templates {
 			out, err := t.Format(ctx)
@@ -127,13 +181,22 @@ func List(args args.List, config config.List) error {
 		total++
 	}
 
-	fmt.Printf("total %d\n", total)
-
-	if skipped > 0 {
-		fmt.Printf("skipped %d", skipped)
+	if total > 0 {
+		fmt.Printf("total %d\n", total)
 	}
 
 	ui.Table(rows, alignments, config.Gap)
+
+	if skipped > 0 {
+		parts := make([]string, 0, len(errCounts))
+		for msg, n := range errCounts {
+			parts = append(parts, fmt.Sprintf("%d %s", n, msg))
+		}
+
+		// map order is random, keep output stable
+		sort.Strings(parts)
+		fmt.Fprintf(os.Stderr, "%d skipped: %s\n", skipped, ui.Foreground(strings.Join(parts, ", "), ui.ColorRed))
+	}
 
 	return nil
 }
