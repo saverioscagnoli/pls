@@ -200,14 +200,13 @@ type Style int
 
 const (
 	StyleBold          Style = 1
-	SyleDim            Style = 2
+	StyleDim           Style = 2
 	StyleItalic        Style = 3
 	StyleUnderline     Style = 4
 	StyleBlink         Style = 5
 	StyleReverse       Style = 7
 	StyleHidden        Style = 8
 	StyleStrikethrough Style = 9
-	StyleDim           Style = 10
 )
 
 func Stylize(s string, styles ...Style) string {
