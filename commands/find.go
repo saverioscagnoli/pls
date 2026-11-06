@@ -1,8 +1,10 @@
 package commands
 
 import (
+	"bufio"
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"pls/args"
 	"pls/config"
@@ -34,6 +36,9 @@ func Find(args args.Find, config config.ConfigFind) {
 		return
 	}
 
+	w := bufio.NewWriterSize(os.Stdout, 64*1024)
+	defer w.Flush()
+
 	for e, err := range file.Search(context.Background(), root, file.SearchOptions{
 		MaxDepth: args.Depth,
 		All:      args.All,
@@ -43,9 +48,11 @@ func Find(args args.Find, config config.ConfigFind) {
 			continue
 		}
 
-		fmt.Println(e.Path)
+		w.WriteString(e.Path)
+		w.WriteByte('\n')
 		count++
 	}
 
-	fmt.Printf("found %d entries in %s\n", count, time.Since(t))
+	w.Flush()
+	fmt.Fprintf(os.Stderr, "found %d entries in %s\n", count, time.Since(t))
 }

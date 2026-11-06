@@ -73,16 +73,6 @@ func walk(dir string, depth, maxDepth uint, all bool, yield func(Entry, error) b
 	return true
 }
 
-func readDirUnsorted(dir string) ([]os.DirEntry, error) {
-	f, err := os.Open(dir)
-	if err != nil {
-		return nil, err
-	}
-
-	defer f.Close()
-	return f.ReadDir(-1)
-}
-
 type SearchOptions struct {
 	MaxDepth uint
 	All      bool
@@ -129,32 +119,45 @@ func Search(ctx context.Context, root string, o SearchOptions) iter.Seq2[Entry, 
 				return
 			}
 
-			entries, err := readDirUnsorted(dir)
-			<-sem
-
-			if err != nil {
-				send(batch{err: err, errAt: Entry{Path: dir, Depth: depth}})
-				return
-			}
-
 			var hits []Entry
 			var subdirs []string
 
-			for _, de := range entries {
-				name := de.Name()
+			prefix := dir
+			if prefix != "/" {
+				prefix += "/"
+			}
+
+			err := readdirFast(dir, func(name string, typ fs.FileMode, unknown bool) {
 				if !o.All && name[0] == '.' {
-					continue
+					return
 				}
 
-				e := Entry{Path: filepath.Join(dir, name), Depth: depth, DirEntry: de}
+				path := prefix + name
+				de := rawEntry{path: path, name: name, typ: typ}
+
+				// Some filesystems don't fill d_type
+				if unknown {
+					if fi, err := os.Lstat(path); err == nil {
+						de.typ = fi.Mode().Type()
+					}
+				}
+
+				e := Entry{Path: path, Depth: depth, DirEntry: de}
 
 				if o.Match == nil || o.Match(e) {
 					hits = append(hits, e)
 				}
 
 				if de.IsDir() && depth < o.MaxDepth && (o.Prune == nil || !o.Prune(e)) {
-					subdirs = append(subdirs, e.Path)
+					subdirs = append(subdirs, path)
 				}
+			})
+
+			<-sem
+
+			if err != nil {
+				send(batch{err: err, errAt: Entry{Path: dir, Depth: depth}})
+				return
 			}
 
 			if len(hits) > 0 && !send(batch{entries: hits}) {
@@ -174,7 +177,11 @@ func Search(ctx context.Context, root string, o SearchOptions) iter.Seq2[Entry, 
 		}
 
 		if !info.IsDir() {
-			yield(Entry{Path: root, Depth: 1, DirEntry: fs.FileInfoToDirEntry(info)}, nil)
+			e := Entry{Path: root, Depth: 1, DirEntry: fs.FileInfoToDirEntry(info)}
+
+			if o.Match == nil || o.Match(e) {
+				yield(e, nil)
+			}
 			return
 		}
 
