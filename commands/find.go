@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"pls/args"
@@ -51,10 +52,14 @@ func nameIndexer(target string, ignoreCase bool) (func(string) int, int) {
 	return func(name string) int { return strings.Index(name, target) }, len(target)
 }
 
-func Find(args args.Find, config config.ConfigFind) error {
+func Find(args args.Find, config *config.Config) error {
 	t := time.Now()
 	count := 0
 	errs := []string{}
+
+	if args.Depth == 0 {
+		args.Depth = math.MaxUint
+	}
 
 	root, err := filepath.Abs(args.Path)
 	if err != nil {
