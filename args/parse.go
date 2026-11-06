@@ -6,7 +6,7 @@ import (
 )
 
 func Parse(argv []string) (Args, error) {
-	var all, ignoreCase bool
+	var all, ignoreCase, stats, showErrors bool
 	var depth *uint
 	var err error
 	var pos []string
@@ -26,6 +26,10 @@ loop:
 				all = true
 			case "ignore-case":
 				ignoreCase = true
+			case "stats":
+				stats = true
+			case "show-errors":
+				showErrors = true
 			case "depth":
 				i++
 
@@ -43,6 +47,8 @@ loop:
 					all = true
 				case 'i':
 					ignoreCase = true
+				case 's':
+					stats = true
 				case 'd':
 					i++
 					if depth, err = parseDepth(argv, i); err != nil {
@@ -58,5 +64,5 @@ loop:
 		}
 	}
 
-	return build(pos, all, depth, ignoreCase)
+	return build(pos, all, depth, ignoreCase, stats, showErrors)
 }

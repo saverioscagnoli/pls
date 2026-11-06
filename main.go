@@ -31,6 +31,9 @@ func main() {
 			os.Exit(1)
 		}
 	case args.Find:
-		commands.Find(a, config.Find)
+		if err := commands.Find(a, config.Find); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
 	}
 }

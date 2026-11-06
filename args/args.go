@@ -14,11 +14,13 @@ type List struct {
 }
 
 type Find struct {
-	Target     string
-	Path       string
-	All        bool
-	Depth      uint
-	IgnoreCase bool
+	Target     string // [0]
+	Path       string // [1]
+	All        bool   // -a --all
+	Depth      uint   // -d n --depth n
+	IgnoreCase bool   // -i --ignore-case
+	Stats      bool   // -s --stats
+	ShowErrors bool   // --show-errors
 }
 
 type Args interface {
@@ -50,7 +52,7 @@ func depthOr(depth *uint, def uint) uint {
 	return def
 }
 
-func build(pos []string, all bool, depth *uint, ignoreCase bool) (Args, error) {
+func build(pos []string, all bool, depth *uint, ignoreCase bool, stats bool, showErrors bool) (Args, error) {
 	var a Args
 	rest := pos
 
@@ -71,7 +73,15 @@ func build(pos []string, all bool, depth *uint, ignoreCase bool) (Args, error) {
 			path = pos[2]
 		}
 
-		a = Find{Target: pos[1], Path: path, All: all, Depth: depthOr(depth, math.MaxUint), IgnoreCase: ignoreCase}
+		a = Find{
+			Target:     pos[1],
+			Path:       path,
+			All:        all,
+			Depth:      depthOr(depth, math.MaxUint),
+			IgnoreCase: ignoreCase,
+			Stats:      stats,
+			ShowErrors: showErrors,
+		}
 		rest = pos[min(3, len(pos)):]
 
 	// pls <path> ...args
