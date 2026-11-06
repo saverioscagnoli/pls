@@ -16,7 +16,18 @@ type Entry struct {
 
 func Walk(root string, maxDepth uint, all bool) iter.Seq2[Entry, error] {
 	return func(yield func(Entry, error) bool) {
-		walk(root, 1, maxDepth, all, yield)
+		info, err := os.Lstat(root)
+		if err != nil {
+			yield(Entry{Path: root}, err)
+			return
+		}
+
+		if target, err := os.Stat(root); err == nil && target.IsDir() {
+			walk(root, 1, maxDepth, all, yield)
+			return
+		}
+
+		yield(Entry{Path: root, Depth: 1, DirEntry: fs.FileInfoToDirEntry(info)}, nil)
 	}
 }
 
