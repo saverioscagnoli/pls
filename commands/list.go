@@ -51,22 +51,22 @@ func alignments(config *config.ConfigList) []ui.Align {
 	return alignments
 }
 
-func List(args args.List, palette *map[string]ui.Color, config config.ConfigList) error {
+func List(args args.List, config *config.Config) error {
 	rows := [][]string{}
 
-	headers := headers(&config)
+	headers := headers(&config.List)
 
 	if len(headers) > 0 {
 		rows = append(rows, headers)
 	}
 
-	templates, err := templates(&config)
+	templates, err := templates(&config.List)
 
 	if err != nil {
 		return fmt.Errorf("found invalid template: %s", err)
 	}
 
-	alignments := alignments(&config)
+	alignments := alignments(&config.List)
 	ctx := map[string]string{}
 	fileSpecs := map[string]ui.Spec{}
 
@@ -93,7 +93,7 @@ func List(args args.List, palette *map[string]ui.Color, config config.ConfigList
 	}
 
 	parse := func(where string, style string) ui.Spec {
-		s, err := ui.ParseSpec(style, *palette)
+		s, err := ui.ParseSpec(style, config.Palette)
 		if err != nil {
 			warn(where, style, err)
 			return ui.Spec{}
@@ -116,7 +116,7 @@ func List(args args.List, palette *map[string]ui.Color, config config.ConfigList
 		return s
 	}
 
-	st := config.Styles
+	st := config.List.Styles
 
 	for entry, err := range file.Walk(args.Path, args.Depth, args.All) {
 		row := []string{}
@@ -135,7 +135,7 @@ func List(args args.List, palette *map[string]ui.Color, config config.ConfigList
 
 		kind := string(entry.Kind())
 
-		item := file.ResolveStyle(name, kind, &config.Files)
+		item := file.ResolveStyle(name, kind, &config.List.Files)
 		spec, ok := fileSpecs[item.Style]
 
 		if !ok {
@@ -146,7 +146,7 @@ func List(args args.List, palette *map[string]ui.Color, config config.ConfigList
 		icon := item.Icon
 		permissions := file.Permissions(info.Mode())
 		size := strconv.FormatInt(info.Size(), 10)
-		modified := info.ModTime().Format(config.ModifiedFmt)
+		modified := info.ModTime().Format(config.List.ModifiedFmt)
 		nlink := strconv.FormatUint(file.LinkCount(info), 10)
 		owner, group, err := file.Ownership(info)
 
@@ -186,7 +186,7 @@ func List(args args.List, palette *map[string]ui.Color, config config.ConfigList
 		fmt.Printf("total %d\n", total)
 	}
 
-	ui.Table(rows, alignments, config.Gap)
+	ui.Table(rows, alignments, config.List.Gap)
 
 	if skipped > 0 {
 		parts := make([]string, 0, len(errCounts))

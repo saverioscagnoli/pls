@@ -6,11 +6,23 @@ import (
 	"pls/args"
 	"pls/commands"
 	"pls/config"
+
+	"github.com/alecthomas/kong"
 )
 
 func main() {
-	a, err := args.Parse(os.Args[1:])
+	var cli args.Cli
+	parser, err := kong.New(&cli,
+		kong.Name("pls"),
+		kong.Description("super description bruh"),
+		kong.ConfigureHelp(kong.HelpOptions{Compact: true}),
+	)
 
+	if err != nil {
+		panic(err)
+	}
+
+	ctx, err := parser.Parse(os.Args[1:])
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(2)
@@ -24,16 +36,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	switch a := a.(type) {
-	case args.List:
-		if err := commands.List(a, &config.Palette, config.List); err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
-		}
-	case args.Find:
-		if err := commands.Find(a, config.Find); err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
-		}
+	switch ctx.Selected().Name {
+	case "list":
+		commands.List(cli.List, config)
+	case "find":
+		commands.Find(cli.Find, config)
 	}
+
 }
