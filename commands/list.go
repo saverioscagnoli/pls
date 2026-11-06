@@ -164,6 +164,7 @@ func List(args args.List, palette *map[string]ui.Color, config config.ConfigList
 		ctx["nlink"] = styleFor("nlink", st.NLink.For(kind)).Apply(nlink)
 		ctx["owner"] = styleFor("owner", st.Owner.For(kind)).Apply(owner)
 		ctx["group"] = styleFor("group", st.Group.For(kind)).Apply(group)
+		ctx["depth"] = strconv.FormatUint(uint64(entry.Depth-1), 10)
 
 		for _, t := range templates {
 			out, err := t.Format(ctx)
