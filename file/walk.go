@@ -121,6 +121,7 @@ func Search(ctx context.Context, root string, o SearchOptions) iter.Seq2[Entry, 
 
 			var hits []Entry
 			var subdirs []string
+			var errs []batch
 
 			prefix := dir
 			if prefix != "/" {
@@ -137,9 +138,13 @@ func Search(ctx context.Context, root string, o SearchOptions) iter.Seq2[Entry, 
 
 				// Some filesystems don't fill d_type
 				if unknown {
-					if fi, err := os.Lstat(path); err == nil {
-						de.typ = fi.Mode().Type()
+					fi, err := os.Lstat(path)
+					if err != nil {
+						errs = append(errs, batch{err: err, errAt: Entry{Path: path, Depth: depth}})
+						return
 					}
+
+					de.typ = fi.Mode().Type()
 				}
 
 				e := Entry{Path: path, Depth: depth, DirEntry: de}
@@ -158,6 +163,12 @@ func Search(ctx context.Context, root string, o SearchOptions) iter.Seq2[Entry, 
 			if err != nil {
 				send(batch{err: err, errAt: Entry{Path: dir, Depth: depth}})
 				return
+			}
+
+			for _, b := range errs {
+				if !send(b) {
+					return
+				}
 			}
 
 			if len(hits) > 0 && !send(batch{entries: hits}) {

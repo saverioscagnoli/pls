@@ -42,30 +42,33 @@ func indexFoldASCII(s, sub string) int {
 	return -1
 }
 
-func nameIndexer(target string, ignoreCase bool) func(string) int {
+func nameIndexer(target string, ignoreCase bool) (func(string) int, int) {
 	if ignoreCase {
 		t := strings.ToLower(target)
-		return func(name string) int { return indexFoldASCII(name, t) }
+		return func(name string) int { return indexFoldASCII(name, t) }, len(t)
 	}
 
-	return func(name string) int { return strings.Index(name, target) }
+	return func(name string) int { return strings.Index(name, target) }, len(target)
 }
 
-func Find(args args.Find, config config.ConfigFind) {
+func Find(args args.Find, config config.ConfigFind) error {
 	t := time.Now()
 	count := 0
+	errs := []string{}
 
 	root, err := filepath.Abs(args.Path)
 	if err != nil {
-		fmt.Println(err)
-		return
+		return err
+	}
+
+	if _, err := os.Stat(root); err != nil {
+		return err
 	}
 
 	w := bufio.NewWriterSize(os.Stdout, 64*1024)
 	defer w.Flush()
 
-	index := nameIndexer(args.Target, args.IgnoreCase)
-	n := len(args.Target)
+	index, n := nameIndexer(args.Target, args.IgnoreCase)
 
 	dim := ui.ColorGray.FG()
 	blue := ui.ColorBlue.FG()
@@ -77,6 +80,9 @@ func Find(args args.Find, config config.ConfigFind) {
 		Match:    func(e file.Entry) bool { return index(e.Name()) >= 0 },
 	}) {
 		if err != nil {
+			if args.ShowErrors {
+				errs = append(errs, ui.Foreground(err.Error(), ui.ColorRed))
+			}
 			continue
 		}
 
@@ -110,6 +116,17 @@ func Find(args args.Find, config config.ConfigFind) {
 		count++
 	}
 
-	w.Flush()
-	fmt.Fprintf(os.Stderr, "found %d entries in %s\n", count, time.Since(t))
+	if err := w.Flush(); err != nil {
+		return err
+	}
+
+	if args.Stats {
+		fmt.Fprintf(os.Stderr, "found %d entries in %s\n", count, time.Since(t))
+	}
+
+	for _, err := range errs {
+		fmt.Fprintln(os.Stderr, err)
+	}
+
+	return nil
 }
