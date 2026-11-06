@@ -5,7 +5,7 @@ import (
 	"iter"
 	"os"
 	"path/filepath"
-	"strings"
+	"slices"
 )
 
 type Entry struct {
@@ -16,61 +16,56 @@ type Entry struct {
 
 func Walk(root string, maxDepth uint, all bool) iter.Seq2[Entry, error] {
 	return func(yield func(Entry, error) bool) {
-		target, err := os.Stat(root)
-
-		if err != nil || !target.IsDir() {
-			info, lerr := os.Lstat(root)
-
-			if lerr != nil {
-				yield(Entry{Path: root}, lerr)
-				return
-			}
-
-			yield(Entry{Path: root, DirEntry: fs.FileInfoToDirEntry(info)}, nil)
+		info, err := os.Lstat(root)
+		if err != nil {
+			yield(Entry{Path: root}, err)
 			return
 		}
 
-		sep := string(filepath.Separator)
-
-		if info, err := os.Lstat(root); err == nil && info.Mode()&fs.ModeSymlink != 0 && !strings.HasSuffix(root, sep) {
-			root += sep
+		if target, err := os.Stat(root); err == nil && target.IsDir() {
+			walk(root, 1, maxDepth, all, yield)
+			return
 		}
 
-		filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-			if err != nil {
-				if !yield(Entry{Path: path}, err) {
-					return filepath.SkipAll
-				}
-
-				return nil
-			}
-
-			if path == root {
-				if maxDepth == 0 {
-					return filepath.SkipDir
-				}
-				return nil
-			}
-
-			if !all && strings.HasPrefix(d.Name(), ".") {
-				if d.IsDir() {
-					return filepath.SkipDir
-				}
-				return nil
-			}
-
-			rel, _ := filepath.Rel(root, path)
-			depth := uint(strings.Count(rel, sep)) + 1
-
-			if !yield(Entry{Path: path, Depth: depth, DirEntry: d}, nil) {
-				return filepath.SkipAll
-			}
-
-			if d.IsDir() && depth >= maxDepth {
-				return filepath.SkipDir
-			}
-
-			return nil
-		})
+		yield(Entry{Path: root, Depth: 1, DirEntry: fs.FileInfoToDirEntry(info)}, nil)
 	}
+}
+
+func walk(dir string, depth, maxDepth uint, all bool, yield func(Entry, error) bool) bool {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return yield(Entry{Path: dir, Depth: depth}, err)
+	}
+
+	// Directories first
+	slices.SortStableFunc(entries, func(a, b fs.DirEntry) int {
+		switch {
+		case a.IsDir() && !b.IsDir():
+			return -1
+		case !a.IsDir() && b.IsDir():
+			return 1
+		}
+
+		return 0
+	})
+
+	for _, entry := range entries {
+		path := filepath.Join(dir, entry.Name())
+
+		if !all && entry.Name()[0] == '.' {
+			continue
+		}
+
+		if !yield(Entry{Path: path, Depth: depth, DirEntry: entry}, nil) {
+			return false
+		}
+
+		if entry.IsDir() && depth < maxDepth {
+			if !walk(path, depth+1, maxDepth, all, yield) {
+				return false
+			}
+		}
+	}
+
+	return true
 }

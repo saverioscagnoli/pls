@@ -2,12 +2,14 @@ package template
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 )
 
 type part struct {
-	text  string
-	isVar bool
+	text   string
+	isVar  bool
+	repeat string
 }
 
 type Template struct {
@@ -38,13 +40,23 @@ func Compile(o rune, c rune, text string) (*Template, error) {
 				return nil, fmt.Errorf("unexpected %c at position %d", c, i)
 			}
 
-			name := strings.TrimSpace(buf.String())
+			raw := buf.String()
+			p := part{text: strings.TrimSpace(raw), isVar: true}
 
-			if name == "" {
-				return nil, fmt.Errorf("empty variable name at position %d", i)
+			if j := strings.LastIndexByte(raw, ':'); j >= 0 {
+				p.repeat = raw[:j]
+				p.text = strings.TrimSpace(raw[j+1:])
+
+				if p.repeat == "" {
+					return nil, fmt.Errorf("empty repeat string at position %d", i)
+				}
 			}
 
-			parts = append(parts, part{text: buf.String(), isVar: true})
+			if p.text == "" {
+				return nil, fmt.Errorf("empty repeat string at position %d", i)
+			}
+
+			parts = append(parts, p)
 			buf.Reset()
 			inside = false
 
@@ -77,6 +89,16 @@ func (t *Template) Format(vars map[string]string) (string, error) {
 
 		if !ok {
 			return "", fmt.Errorf("missing variable %q", p.text)
+		}
+
+		if p.repeat != "" {
+			n, err := strconv.Atoi(v)
+			if err != nil || n < 0 {
+				return "", fmt.Errorf("variable %q is not a valid count: %q", p.text, v)
+			}
+
+			sb.WriteString(strings.Repeat(p.repeat, n))
+			continue
 		}
 
 		sb.WriteString(v)
