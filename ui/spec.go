@@ -66,7 +66,7 @@ func (s Spec) Apply(text string) string {
 		return text
 	}
 
-	return s.prefix + text + reset
+	return s.prefix + text + Reset
 }
 
 func (s Spec) Merge(o Spec) Spec {

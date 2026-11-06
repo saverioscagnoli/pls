@@ -9,7 +9,7 @@ import (
 
 type Color int
 
-const reset = "\033[0m"
+const Reset = "\033[0m"
 
 const (
 	ColorBlack   Color = 30
@@ -184,16 +184,19 @@ func (c Color) bg() string {
 	return code(int(c) + 10)
 }
 
+func (c Color) FG() string { return c.fg() }
+func (c Color) BG() string { return c.bg() }
+
 func Foreground(s string, c Color) string {
-	return c.fg() + s + reset
+	return c.fg() + s + Reset
 }
 
 func Background(s string, c Color) string {
-	return c.bg() + s + reset
+	return c.bg() + s + Reset
 }
 
 func Colors(s string, fg Color, bg Color) string {
-	return fg.fg() + bg.bg() + s + reset
+	return fg.fg() + bg.bg() + s + Reset
 }
 
 type Style int
@@ -216,5 +219,5 @@ func Stylize(s string, styles ...Style) string {
 		prefix.WriteString(code(int(st)))
 	}
 
-	return prefix.String() + s + reset
+	return prefix.String() + s + Reset
 }
