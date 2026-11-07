@@ -41,6 +41,8 @@ func main() {
 		commands.List(cli.List, config)
 	case "find":
 		commands.Find(cli.Find, config)
+	case "disks":
+		commands.Disks(cli.Disks, config)
 	}
 
 }

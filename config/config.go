@@ -16,11 +16,13 @@ type Config struct {
 	Palette map[string]ui.Color `json:"palette"`
 	List    ConfigList          `json:"list"`
 	Find    ConfigFind          `json:"find"`
+	Disks   ConfigDisks         `json:"disks"`
 }
 
 func Default() *Config {
 	return &Config{
-		List: configListDefault(),
+		List:  configListDefault(),
+		Disks: configDisksDefault(),
 	}
 }
 

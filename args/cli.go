@@ -16,8 +16,12 @@ type Find struct {
 	Depth      uint   `short:"d" default:"0"`
 }
 
+type Disks struct {
+}
+
 type Cli struct {
 	List  List   `cmd:"" default:"withargs" help:"List directory contents."`
 	Find  Find   `cmd:"" help:"Find files by name."`
+	Disks Disks  `cmd:"" help:"List every disk"`
 	Color string `enum:"auto,always,never" default:"auto"`
 }
