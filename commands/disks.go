@@ -6,27 +6,14 @@ import (
 	"os"
 	"pls/args"
 	"pls/config"
+	"pls/template"
 	"pls/ui"
 	"strings"
 	"syscall"
 )
 
-func fillColor(frac float64, thresholds []config.BarThreshold) ui.Color {
-	best := -1.0
-	color := ui.ColorGray
-
-	for _, t := range thresholds {
-		if frac >= t.Min && t.Min > best {
-			best = t.Min
-			color = t.Color
-		}
-	}
-
-	return color
-}
-
-func pickThreshold(frac float64, thresholds []config.BarThreshold) config.BarThreshold {
-	best := config.BarThreshold{Min: -1, Color: ui.ColorGray, TextColor: ui.ColorWhite}
+func pickThreshold(frac float64, thresholds []config.ConfigDisksBarThreshold) config.ConfigDisksBarThreshold {
+	best := config.ConfigDisksBarThreshold{Min: -1, Color: ui.ColorGray, TextColor: ui.ColorWhite}
 
 	for _, t := range thresholds {
 		if frac >= t.Min && t.Min > best.Min {
@@ -47,8 +34,8 @@ func renderBar(frac float64, config config.ConfigDisks) string {
 	w := bufio.NewWriter(os.Stdout)
 	defer w.Flush()
 
-	width := int(config.BarWidth)
-	t := pickThreshold(frac, config.Thresholds)
+	width := int(config.Bar.Width)
+	t := pickThreshold(frac, config.Bar.Thresholds)
 	filled := int(frac * float64(width))
 	label := fmt.Sprintf("%.1f%%", frac*100)
 
@@ -76,6 +63,22 @@ func renderBar(frac float64, config config.ConfigDisks) string {
 	return b.String()
 }
 
+func diskTemplates(config *config.ConfigDisks) ([]*template.Template, error) {
+	templates := []*template.Template{}
+
+	for _, col := range config.Columns {
+		t, err := template.Compile('{', '}', col.Format)
+
+		if err != nil {
+			return templates, err
+		}
+
+		templates = append(templates, t)
+	}
+
+	return templates, nil
+}
+
 func Disks(args args.Disks, config *config.Config) error {
 	f, err := os.Open("/proc/mounts")
 	if err != nil {
@@ -86,9 +89,19 @@ func Disks(args args.Disks, config *config.Config) error {
 
 	sc := bufio.NewScanner(f)
 
+	templates, err := diskTemplates(&config.Disks)
+
+	if err != nil {
+		return fmt.Errorf("found invalid template: %s", err)
+	}
+
+	ctx := map[string]string{}
+	rows := [][]string{}
+
 	for sc.Scan() {
+		row := []string{}
 		fields := strings.Fields(sc.Text())
-		dev, mnt, _ := fields[0], fields[1], fields[2]
+		dev, mnt, fstype := fields[0], fields[1], fields[2]
 
 		if !strings.HasPrefix(dev, "/dev/") {
 			continue
@@ -108,14 +121,34 @@ func Disks(args args.Disks, config *config.Config) error {
 			continue
 		}
 
-		_ = float64(used) / float64(used+avail)
+		frac := float64(used) / float64(used+avail)
 
-		fmt.Printf("%s\n", renderBar(0.90, config.Disks))
+		ctx["dev"] = dev
+		ctx["mount"] = mnt
+		ctx["fstype"] = fstype
+		ctx["bar"] = renderBar(frac, config.Disks)
+		ctx["total"] = string(total)
+		ctx["avail"] = string(avail)
+		ctx["used"] = string(used)
+
+		for _, t := range templates {
+			out, err := t.Format(ctx)
+
+			if err != nil {
+				return fmt.Errorf("failed to format column: %s", err)
+			}
+
+			row = append(row, out)
+		}
+
+		rows = append(rows, row)
 	}
 
 	if err := sc.Err(); err != nil {
 		return fmt.Errorf("reading /proc/mounts: %w", err)
 	}
+
+	ui.Table(rows, []ui.Align{}, 2)
 
 	return nil
 }

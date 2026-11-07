@@ -25,7 +25,7 @@ func headers(config *config.ConfigList) []string {
 	return headers
 }
 
-func templates(config *config.ConfigList) ([]*template.Template, error) {
+func listTemplates(config *config.ConfigList) ([]*template.Template, error) {
 	templates := []*template.Template{}
 
 	for _, col := range config.Columns {
@@ -60,7 +60,7 @@ func List(args args.List, config *config.Config) error {
 		rows = append(rows, headers)
 	}
 
-	templates, err := templates(&config.List)
+	templates, err := listTemplates(&config.List)
 
 	if err != nil {
 		return fmt.Errorf("found invalid template: %s", err)
