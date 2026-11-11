@@ -145,7 +145,7 @@ func List(args args.List, config *config.Config) error {
 
 		icon := item.Icon
 		permissions := file.Permissions(info.Mode())
-		size := strconv.FormatInt(info.Size(), 10)
+		size := info.Size()
 		modified := info.ModTime().Format(config.List.ModifiedFmt)
 		nlink := strconv.FormatUint(file.LinkCount(info), 10)
 		owner, group, err := file.Ownership(info)
@@ -159,7 +159,7 @@ func List(args args.List, config *config.Config) error {
 		ctx["icon"] = styleFor("icon", st.Icon.For(kind)).Merge(spec).Apply(icon)
 		ctx["kind"] = styleFor("kind", st.Kind.For(kind)).Apply(kind)
 		ctx["permissions"] = styleFor("permissions", st.Permissions.For(kind)).Apply(permissions)
-		ctx["size"] = styleFor("size", st.Size.For(kind)).Apply(size)
+		ctx["size"] = styleFor("size", st.Size.For(kind)).Apply(ui.NewSize(size).Format(config.List.SizeUnit))
 		ctx["modified"] = styleFor("modified", st.Modified.For(kind)).Apply(modified)
 		ctx["nlink"] = styleFor("nlink", st.NLink.For(kind)).Apply(nlink)
 		ctx["owner"] = styleFor("owner", st.Owner.For(kind)).Apply(owner)

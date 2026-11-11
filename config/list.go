@@ -36,6 +36,7 @@ type ConfigList struct {
 	Columns     []ConfigListColumn   `json:"columns"`
 	Gap         uint                 `json:"gap"`
 	ModifiedFmt string               `json:"modified-fmt"`
+	SizeUnit    ui.SizeFormat        `json:"size-unit"`
 	Files       ConfigListFileStyles `json:"files"`
 	Styles      ConfigListStyles     `json:"styles"`
 }
@@ -52,6 +53,7 @@ func configListDefault() ConfigList {
 		},
 		Gap:         2,
 		ModifiedFmt: "Jan 02 15:04",
+		SizeUnit:    ui.SizeFormat{Unit: ui.UnitAuto, Decimals: 1},
 		Files: ConfigListFileStyles{
 			Default: ConfigListStyleItem{Icon: "f"},
 			Kinds: SplitMap[ConfigListStyleItem]{
