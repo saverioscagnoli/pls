@@ -79,6 +79,16 @@ func diskTemplates(config *config.ConfigDisks) ([]*template.Template, error) {
 	return templates, nil
 }
 
+func diskAlignments(config *config.ConfigDisks) []ui.Align {
+	alignments := []ui.Align{}
+
+	for _, col := range config.Columns {
+		alignments = append(alignments, col.Align)
+	}
+
+	return alignments
+}
+
 func Disks(args args.Disks, config *config.Config) error {
 	f, err := os.Open("/proc/mounts")
 	if err != nil {
@@ -90,6 +100,7 @@ func Disks(args args.Disks, config *config.Config) error {
 	sc := bufio.NewScanner(f)
 
 	templates, err := diskTemplates(&config.Disks)
+	alignments := diskAlignments(&config.Disks)
 
 	if err != nil {
 		return fmt.Errorf("found invalid template: %s", err)
@@ -127,9 +138,9 @@ func Disks(args args.Disks, config *config.Config) error {
 		ctx["mount"] = mnt
 		ctx["fstype"] = fstype
 		ctx["bar"] = renderBar(frac, config.Disks)
-		ctx["total"] = string(total)
-		ctx["avail"] = string(avail)
-		ctx["used"] = string(used)
+		ctx["total"] = ui.NewSize(int64(total)).Format(config.Disks.SizeUnit)
+		ctx["avail"] = ui.NewSize(int64(avail)).Format(config.Disks.SizeUnit)
+		ctx["used"] = ui.NewSize(int64(used)).Format(config.Disks.SizeUnit)
 
 		for _, t := range templates {
 			out, err := t.Format(ctx)
@@ -148,7 +159,7 @@ func Disks(args args.Disks, config *config.Config) error {
 		return fmt.Errorf("reading /proc/mounts: %w", err)
 	}
 
-	ui.Table(rows, []ui.Align{}, 2)
+	ui.Table(rows, alignments, config.Disks.Gap)
 
 	return nil
 }

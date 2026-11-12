@@ -19,9 +19,10 @@ type ConfigDisksBar struct {
 }
 
 type ConfigDisks struct {
-	Columns []ConfigDisksColumn `json:"columns"`
-	Gap     uint                `json:"gap"`
-	Bar     ConfigDisksBar      `json:"bar"`
+	Columns  []ConfigDisksColumn `json:"columns"`
+	Gap      uint                `json:"gap"`
+	SizeUnit ui.SizeFormat       `json:"size-unit"`
+	Bar      ConfigDisksBar      `json:"bar"`
 }
 
 func configDisksDefault() ConfigDisks {
@@ -33,7 +34,8 @@ func configDisksDefault() ConfigDisks {
 			{Format: "{bar}"},
 			{Format: "{used} / {total}"},
 		},
-		Gap: 2,
+		Gap:      2,
+		SizeUnit: ui.SizeFormat{Unit: ui.UnitAuto, Decimals: 1},
 		Bar: ConfigDisksBar{
 			Width: 20,
 			Thresholds: []ConfigDisksBarThreshold{
