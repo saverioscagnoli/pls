@@ -221,3 +221,7 @@ func Stylize(s string, styles ...Style) string {
 
 	return prefix.String() + s + Reset
 }
+
+func StrPtr(s string) *string {
+	return &s
+}

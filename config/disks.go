@@ -3,6 +3,7 @@ package config
 import "pls/ui"
 
 type ConfigDisksColumn struct {
+	Header *string  `json:"header"`
 	Format string   `json:"format"`
 	Align  ui.Align `json:"align"`
 }
@@ -28,11 +29,11 @@ type ConfigDisks struct {
 func configDisksDefault() ConfigDisks {
 	return ConfigDisks{
 		Columns: []ConfigDisksColumn{
-			{Format: "{dev}"},
-			{Format: "{mount}"},
-			{Format: "{fstype}"},
-			{Format: "{bar}"},
-			{Format: "{used} / {total}"},
+			{Header: ui.StrPtr("Device"), Format: "{dev}"},
+			{Header: ui.StrPtr("Mountpoint"), Format: "{mount}"},
+			{Header: ui.StrPtr("Type"), Format: "{fstype}"},
+			{Header: ui.StrPtr("Usage"), Format: "{bar}"},
+			{Format: "{used} / {total}", Align: ui.AlignRight},
 		},
 		Gap:      2,
 		SizeUnit: ui.SizeFormat{Unit: ui.UnitAuto, Decimals: 1},

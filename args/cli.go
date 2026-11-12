@@ -17,6 +17,8 @@ type Find struct {
 }
 
 type Disks struct {
+	Path *string `arg:"" optional:""`
+	All  bool    `short:"a"`
 }
 
 type Cli struct {

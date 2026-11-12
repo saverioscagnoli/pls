@@ -6,10 +6,10 @@ import (
 	"os"
 	"pls/args"
 	"pls/config"
+	"pls/file"
 	"pls/template"
 	"pls/ui"
 	"strings"
-	"syscall"
 )
 
 func pickThreshold(frac float64, thresholds []config.ConfigDisksBarThreshold) config.ConfigDisksBarThreshold {
@@ -60,6 +60,7 @@ func renderBar(frac float64, config config.ConfigDisks) string {
 		b.WriteString(ui.Background(cell, bg))
 	}
 
+	b.WriteString("\x1b[0m")
 	return b.String()
 }
 
@@ -89,77 +90,97 @@ func diskAlignments(config *config.ConfigDisks) []ui.Align {
 	return alignments
 }
 
-func Disks(args args.Disks, config *config.Config) error {
-	f, err := os.Open("/proc/mounts")
-	if err != nil {
-		return err
+func diskHeaders(config *config.ConfigDisks) []string {
+	headers := []string{}
+
+	for _, col := range config.Columns {
+		if col.Header != nil {
+			headers = append(headers, *col.Header)
+		}
 	}
 
-	defer f.Close()
+	return headers
+}
 
-	sc := bufio.NewScanner(f)
+func diskRow(templates []*template.Template, ctx map[string]string, f *file.Filesystem, config *config.Config) ([]string, error) {
+	row := []string{}
+
+	ctx["dev"] = f.Device
+	ctx["mount"] = f.Mountpoint
+	ctx["fstype"] = f.Type
+	ctx["bar"] = renderBar(f.Frac, config.Disks)
+	ctx["total"] = ui.NewSize(f.Total).Format(config.Disks.SizeUnit)
+	ctx["avail"] = ui.NewSize(f.Available).Format(config.Disks.SizeUnit)
+	ctx["used"] = ui.NewSize(f.Used).Format(config.Disks.SizeUnit)
+
+	for _, t := range templates {
+		out, err := t.Format(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to format column: %v", err)
+		}
+
+		row = append(row, out)
+	}
+
+	return row, nil
+}
+
+func Disks(args args.Disks, config *config.Config) error {
 
 	templates, err := diskTemplates(&config.Disks)
-	alignments := diskAlignments(&config.Disks)
-
 	if err != nil {
-		return fmt.Errorf("found invalid template: %s", err)
+		return fmt.Errorf("invalid template: %v", err)
 	}
 
+	alignments := diskAlignments(&config.Disks)
 	ctx := map[string]string{}
 	rows := [][]string{}
+	total := 0
 
-	for sc.Scan() {
-		row := []string{}
-		fields := strings.Fields(sc.Text())
-		dev, mnt, fstype := fields[0], fields[1], fields[2]
+	headers := diskHeaders(&config.Disks)
 
-		if !strings.HasPrefix(dev, "/dev/") {
-			continue
+	if len(headers) > 0 {
+		rows = append(rows, headers)
+	}
+
+	if args.Path != nil {
+		f, err := file.FindFilesystem(*args.Path)
+		if err != nil {
+			return err
 		}
 
-		var st syscall.Statfs_t
-		if err := syscall.Statfs(mnt, &st); err != nil {
-			continue
-		}
-
-		bsize := uint64(st.Bsize)
-		total := st.Blocks * bsize
-		avail := st.Bavail * bsize
-		used := (st.Blocks - st.Bfree) * bsize
-
-		if total == 0 {
-			continue
-		}
-
-		frac := float64(used) / float64(used+avail)
-
-		ctx["dev"] = dev
-		ctx["mount"] = mnt
-		ctx["fstype"] = fstype
-		ctx["bar"] = renderBar(frac, config.Disks)
-		ctx["total"] = ui.NewSize(int64(total)).Format(config.Disks.SizeUnit)
-		ctx["avail"] = ui.NewSize(int64(avail)).Format(config.Disks.SizeUnit)
-		ctx["used"] = ui.NewSize(int64(used)).Format(config.Disks.SizeUnit)
-
-		for _, t := range templates {
-			out, err := t.Format(ctx)
-
-			if err != nil {
-				return fmt.Errorf("failed to format column: %s", err)
-			}
-
-			row = append(row, out)
+		row, err := diskRow(templates, ctx, f, config)
+		if err != nil {
+			return err
 		}
 
 		rows = append(rows, row)
+		total++
+	} else {
+		filesystems, err := file.AllFilesystems()
+		if err != nil {
+			return fmt.Errorf("failed to list filesystems: %v", err)
+		}
+
+		for _, f := range filesystems {
+			if !args.All && !f.IsUser() {
+				continue
+			}
+
+			row, err := diskRow(templates, ctx, &f, config)
+			if err != nil {
+				return err
+			}
+
+			rows = append(rows, row)
+			total++
+		}
 	}
 
-	if err := sc.Err(); err != nil {
-		return fmt.Errorf("reading /proc/mounts: %w", err)
+	if total > 0 {
+		fmt.Printf("total %d\n", total)
 	}
 
 	ui.Table(rows, alignments, config.Disks.Gap)
-
 	return nil
 }
