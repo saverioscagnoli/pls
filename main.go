@@ -3,18 +3,16 @@ package main
 import (
 	"fmt"
 	"os"
-	"pls/args"
-	"pls/commands"
-	"pls/config"
 
 	"github.com/alecthomas/kong"
+	"github.com/fatih/color"
 )
 
 func main() {
-	var cli args.Cli
-	parser, err := kong.New(&cli,
+	var args Args
+	parser, err := kong.New(&args,
 		kong.Name("pls"),
-		kong.Description("super description bruh"),
+		kong.Description("super mega detailed description"),
 		kong.ConfigureHelp(kong.HelpOptions{Compact: true}),
 	)
 
@@ -24,25 +22,22 @@ func main() {
 
 	ctx, err := parser.Parse(os.Args[1:])
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(2)
+		panic(err)
 	}
 
-	path := config.File()
-	config, err := config.Parse(path)
+	if args.NoColor {
+		color.NoColor = true
+	}
 
+	config, err := ConfigParse(args.Config)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		panic(err)
 	}
 
 	switch ctx.Selected().Name {
 	case "list":
-		commands.List(cli.List, config)
+		List(args, config)
 	case "find":
-		commands.Find(cli.Find, config)
-	case "disks":
-		commands.Disks(cli.Disks, config)
+		fmt.Println("find")
 	}
-
 }

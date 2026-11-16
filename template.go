@@ -1,4 +1,4 @@
-package template
+package main
 
 import (
 	"fmt"
@@ -16,7 +16,7 @@ type Template struct {
 	parts []part
 }
 
-func Compile(o rune, c rune, text string) (*Template, error) {
+func TemplateCompile(o rune, c rune, text string) (*Template, error) {
 	var parts []part
 	var buf strings.Builder
 	var inside bool
