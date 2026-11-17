@@ -9,7 +9,7 @@ import (
 	"github.com/fatih/color"
 )
 
-var NamedColors = map[string][]color.Attribute{
+var namedColors = map[string][]color.Attribute{
 	"black":   {color.FgBlack},
 	"red":     {color.FgRed},
 	"green":   {color.FgGreen},
@@ -106,7 +106,7 @@ func DecodeColor(data []byte, dst *color.Color) error {
 			name = "bg-" + token
 		}
 
-		attrs, ok := NamedColors[name]
+		attrs, ok := namedColors[name]
 		if !ok {
 			if background {
 				return fmt.Errorf("unknown background color %q", token)
