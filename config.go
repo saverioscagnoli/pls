@@ -16,13 +16,6 @@ type ConfigColumn struct {
 	Align  Align   `json:"align,omitempty"`
 }
 
-type ConfigList struct {
-	Columns     []ConfigColumn `json:"columns"`
-	Gap         uint           `json:"gap"`
-	ModifiedFmt string         `json:"modified-fmt"`
-	SizeFmt     SizeFormat     `json:"size-fmt"`
-}
-
 type ConfigFind struct{}
 
 type Config struct {
@@ -34,20 +27,8 @@ type Config struct {
 func ConfigDefault() Config {
 	return Config{
 		Palette: map[string]color.Color{},
-		List: ConfigList{
-			Columns: []ConfigColumn{
-				{Format: "{  :depth}{name}"},
-				{Format: "{permissions}"},
-				{Format: "{size}", Align: AlignRight},
-				{Format: "{modified}"},
-				{Format: "{owner} ({group})"},
-				{Format: "-> {nlink}"},
-			},
-			Gap:         2,
-			ModifiedFmt: "Jan 02 15:04",
-			SizeFmt:     SizeFormat{Unit: UnitAuto, Decimals: 1},
-		},
-		Find: ConfigFind{},
+		List:    ConfigListDefault(),
+		Find:    ConfigFind{},
 	}
 }
 
