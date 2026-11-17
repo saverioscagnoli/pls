@@ -47,7 +47,7 @@ var namedColors = map[string][]color.Attribute{
 	"bg-bright-white":   {color.BgHiWhite},
 }
 
-func DecodeColor(data []byte, dst *color.Color) error {
+func DecodeColor(data []byte, dst *color.Color, palette map[string]string) error {
 	var spec string
 	if err := json.Unmarshal(data, &spec); err != nil {
 		return err
@@ -73,6 +73,10 @@ func DecodeColor(data []byte, dst *color.Color) error {
 
 			token = tokens[0]
 			tokens = tokens[1:]
+		}
+
+		if value, ok := palette[token]; ok {
+			token = strings.ToLower(value)
 		}
 
 		if strings.HasPrefix(token, "#") {

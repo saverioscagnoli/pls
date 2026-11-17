@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/fatih/color"
 )
@@ -19,14 +20,14 @@ type ConfigColumn struct {
 type ConfigFind struct{}
 
 type Config struct {
-	Palette map[string]color.Color `json:"palette"`
-	List    ConfigList             `json:"list"`
-	Find    ConfigFind             `json:"find"`
+	Palette map[string]string `json:"palette"`
+	List    ConfigList        `json:"list"`
+	Find    ConfigFind        `json:"find"`
 }
 
 func ConfigDefault() Config {
 	return Config{
-		Palette: map[string]color.Color{},
+		Palette: map[string]string{},
 		List:    ConfigListDefault(),
 		Find:    ConfigFind{},
 	}
@@ -87,9 +88,40 @@ func ConfigParse(customPath *string) (*Config, error) {
 		return nil, err
 	}
 
+	var paletteConfig struct {
+		Palette map[string]string `json:"palette"`
+	}
+	if err := json.Unmarshal(bytes, &paletteConfig); err != nil {
+		return nil, err
+	}
+	palette := make(map[string]string, len(paletteConfig.Palette))
+	for name, value := range paletteConfig.Palette {
+		nameKey := strings.ToLower(name)
+		value = strings.TrimSpace(value)
+		if len(strings.Fields(name)) != 1 || nameKey == "on" || strings.HasPrefix(nameKey, "#") || strings.HasPrefix(nameKey, "bg-") {
+			return nil, fmt.Errorf("palette %q: invalid color name", name)
+		}
+		if _, exists := palette[nameKey]; exists {
+			return nil, fmt.Errorf("palette %q: duplicate color name ignoring case", name)
+		}
+		if len(strings.Fields(value)) != 1 || strings.HasPrefix(strings.ToLower(value), "bg-") {
+			return nil, fmt.Errorf("palette %q: expected a single foreground color", name)
+		}
+		data, err := json.Marshal(value)
+		if err != nil {
+			return nil, err
+		}
+		var c color.Color
+		if err := DecodeColor(data, &c, nil); err != nil {
+			return nil, fmt.Errorf("palette %q: %w", name, err)
+		}
+		palette[nameKey] = value
+	}
 	if err := json.Unmarshal(bytes, &config,
 		json.RejectUnknownMembers(true),
-		json.WithUnmarshalers(json.UnmarshalFunc(DecodeColor)),
+		json.WithUnmarshalers(json.UnmarshalFunc(func(data []byte, dst *color.Color) error {
+			return DecodeColor(data, dst, palette)
+		})),
 	); err != nil {
 		return nil, err
 	}

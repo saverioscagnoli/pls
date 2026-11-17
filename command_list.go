@@ -22,7 +22,12 @@ func List(args Args, config *Config) {
 		return
 	}
 
-	for entry := range Walk(args.List.Path, args.List.Depth, args.List.All) {
+	for entry, err := range Walk(args.List.Path, args.List.Depth, args.List.All) {
+		if err != nil {
+			errors = append(errors, err)
+			continue
+		}
+
 		var row []string
 
 		info, err := entry.Info()
@@ -48,7 +53,7 @@ func List(args Args, config *Config) {
 		}
 
 		item := styles.Resolve(name, kind)
-		// Depth is also used as a numeric template repeat count.
+
 		ctx["depth"] = depth
 		ctx["name"] = ApplyColor(styles.ColorFor(name, kind, &vars.Name), name)
 		ctx["icon"] = ApplyColor(styles.ColorFor(name, kind, &vars.Icon), item.Icon)
@@ -76,13 +81,13 @@ func List(args Args, config *Config) {
 	}
 
 	if total > 0 {
-		fmt.Printf("total %d\n", total)
+		fmt.Printf("%d total\n", total)
 	}
 
 	Table(rows, aligns, config.List.Gap)
 
 	if len(errors) > 0 {
-		fmt.Printf("%d errors\n", len(errors))
+		fmt.Printf("%d error(s)\n", len(errors))
 	}
 
 	for _, err := range errors {
