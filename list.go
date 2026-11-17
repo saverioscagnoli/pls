@@ -31,9 +31,21 @@ func List(args Args, config *Config) {
 			continue
 		}
 
+		owner, group, err := DirEntryOwnership(info)
+		if err != nil {
+			errors = append(errors, err)
+			continue
+		}
+
 		ctx["name"] = info.Name()
-		ctx["depth"] = strconv.FormatUint(uint64(entry.Depth), 10)
+		ctx["depth"] = strconv.FormatUint(uint64(entry.Depth-1), 10)
+		ctx["kind"] = string(entry.Kind())
+		ctx["permissions"] = DirEntryPermissions(info.Mode())
+		ctx["size"] = NewSize(info.Size()).Format(config.List.SizeFmt)
 		ctx["modified"] = info.ModTime().Format(config.List.ModifiedFmt)
+		ctx["nlink"] = strconv.FormatUint(DirEntryNLink(info), 10)
+		ctx["owner"] = owner
+		ctx["group"] = group
 
 		for _, t := range templates {
 			s, err := t.Format(ctx)

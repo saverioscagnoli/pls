@@ -11,15 +11,16 @@ import (
 )
 
 type ConfigColumn struct {
-	Header *string `json:"header"`
+	Header *string `json:"header,omitzero"`
 	Format string  `json:"format"`
-	Align  Align   `json:"align"`
+	Align  Align   `json:"align,omitempty"`
 }
 
 type ConfigList struct {
 	Columns     []ConfigColumn `json:"columns"`
 	Gap         uint           `json:"gap"`
 	ModifiedFmt string         `json:"modified-fmt"`
+	SizeFmt     SizeFormat     `json:"size-fmt"`
 }
 
 type ConfigFind struct{}
@@ -35,10 +36,16 @@ func ConfigDefault() Config {
 		Palette: map[string]color.Color{},
 		List: ConfigList{
 			Columns: []ConfigColumn{
-				{Format: "{name}"},
+				{Format: "{  :depth}{name}"},
+				{Format: "{permissions}"},
+				{Format: "{size}", Align: AlignRight},
+				{Format: "{modified}"},
+				{Format: "{owner} ({group})"},
+				{Format: "-> {nlink}"},
 			},
 			Gap:         2,
 			ModifiedFmt: "Jan 02 15:04",
+			SizeFmt:     SizeFormat{Unit: UnitAuto, Decimals: 1},
 		},
 		Find: ConfigFind{},
 	}
@@ -103,7 +110,7 @@ func ConfigParse(customPath *string) (*Config, error) {
 		json.RejectUnknownMembers(true),
 		json.WithUnmarshalers(json.UnmarshalFunc(DecodeColor)),
 	); err != nil {
-		return nil, fmt.Errorf("decode config %q: %w", path, err)
+		return nil, err
 	}
 
 	return &config, nil

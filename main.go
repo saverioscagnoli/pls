@@ -22,7 +22,8 @@ func main() {
 
 	ctx, err := parser.Parse(os.Args[1:])
 	if err != nil {
-		panic(err)
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(3)
 	}
 
 	if args.NoColor {
@@ -31,7 +32,9 @@ func main() {
 
 	config, err := ConfigParse(args.Config)
 	if err != nil {
-		panic(err)
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+
 	}
 
 	switch ctx.Selected().Name {
