@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strconv"
 )
 
 func List(args Args, config *Config) {
@@ -31,6 +32,7 @@ func List(args Args, config *Config) {
 		}
 
 		ctx["name"] = info.Name()
+		ctx["depth"] = strconv.FormatUint(uint64(entry.Depth), 10)
 		ctx["modified"] = info.ModTime().Format(config.List.ModifiedFmt)
 
 		for _, t := range templates {
