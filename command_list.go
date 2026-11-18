@@ -22,7 +22,9 @@ func List(args Args, config *Config) {
 		return
 	}
 
-	for entry, err := range Walk(args.List.Path, args.List.Depth, args.List.All) {
+	walkoptions := WalkOptions{}
+
+	for entry, err := range Walk(args.List.Path, walkoptions) {
 		if err != nil {
 			errors = append(errors, err)
 			continue

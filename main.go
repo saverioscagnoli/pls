@@ -41,6 +41,6 @@ func main() {
 	case "list":
 		List(args, config)
 	case "find":
-		fmt.Println("find")
+		Find(args, config)
 	}
 }
